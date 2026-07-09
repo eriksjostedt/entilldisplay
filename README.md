@@ -148,17 +148,26 @@ och nmcli fungerar identiskt. **Villkor:** kör samma OS-generation på alla, an
 
 ## Sätta upp en ny skärm
 
-1. Flasha **Raspberry Pi OS Lite** (64-bit, Bookworm+), sätt hostname `skarmN`, aktivera SSH.
-2. Boota, koppla till internet (tillfälligt räcker).
-3. Kör bootstrap (en rad):
+Målet är att du bara gör den *minimala* manuella biten; resten körs från Macen över tailnet.
+
+1. **Flasha Raspberry Pi OS Lite** (64-bit, Bookworm+) — i Raspberry Pi Imager: sätt hostname
+   (`skarm1`), lägg in din SSH-nyckel, ev. WiFi. Sätt i kortet, boota.
+2. **Aktivera Tailscale** på burken (den enda manuella biten):
    ```bash
-   curl -fsSL https://raw.githubusercontent.com/eriksjostedt/entilldisplay/main/bootstrap.sh | \
-     sudo bash -s -- --name skarmN --authkey tskey-XXXX
+   sudo tailscale up --advertise-tags=tag:signage
    ```
-   Bootstrappen: installerar `mpv`, `curl`, `network-manager`, `tailscale`; joinar tailnet
-   (`--advertise-tags=tag:signage`); lägger `supervisor.sh`/`player.sh` + `entilldisplay.service`;
-   `systemctl enable --now`.
-4. Klart. Skärmen dyker upp i tailnet + i vakt-panelen och börjar visa sin meny.
+   Godkänn i tailnet-admin. Nu är burken nåbar över tailnet.
+3. **Provisionera från Macen** — kör (eller be Claude köra):
+   ```bash
+   ./provision.sh skarm1.tailf0de83.ts.net vagg1
+   ```
+   Det SSH:ar in och kör `bootstrap.sh`, som installerar `mpv`/`curl`/`network-manager`,
+   sätter **ethernet-fallback** (kabel = alltid nät), lägger `player.sh` + `entilldisplay.service`
+   och kör `systemctl enable --now`.
+4. Klart. Skärmen visar sin meny och är nåbar via SSH över tailnet för all framtida fjärrfix.
+
+> `bootstrap.sh` är idempotent — kan köras om när som helst (t.ex. för att byta `--media-base`
+> eller `--poll`). Den kan också köras lokalt på burken om du hellre vill.
 
 ## Egen distribution (prepp:ad image)
 
@@ -197,9 +206,10 @@ bakade i imagen — så samma image kan flashas på hur många kort som helst.
 - [x] `player.sh` — poll + conditional GET (304) + mpv/drm-visning (bild), video-stöd.
 - [x] Server-endpoint på .56 med ETag; 304-beteende verifierat.
 - [x] Pilot installerad på .48 (`entilldisplay.service`, ej auto-enabled).
+- [x] `bootstrap.sh` — installerar mpv/curl/network-manager, player + systemd, tailscale.
+- [x] `provision.sh` — kör bootstrap på en ny skärm från Macen över tailnet.
+- [x] Ethernet-fallback-anslutning (kabel = alltid nät) i bootstrap.
 - [ ] `supervisor.sh` — OTA + syntaxkoll + rollback + good-stämpling.
-- [ ] `bootstrap.sh` — en-rads-installer (mpv/tailscale/systemd + ethernet-fallback).
-- [ ] Ethernet-fallback-anslutning (kabel = alltid nät) i bootstrap/image.
 - [ ] Egen image via `sdm` (steg 2) — flasha-och-kör, first-boot-hook.
 - [ ] WiFi-funktioner i player (`nmcli`, failsafe, verifiering).
 - [ ] Privat config-poll över Tailscale (`.json` per skärm).
