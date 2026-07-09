@@ -1,0 +1,5 @@
+# host-lokalt tillstånd (media-cache, versioner)
+.entilldisplay/
+state/
+*.png
+*.mp4

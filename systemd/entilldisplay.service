@@ -1,0 +1,17 @@
+[Unit]
+Description=entilldisplay — self-hostad signage-player
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=eriks
+SupplementaryGroups=video render
+Environment=POLL=60
+# Pekar på supervisorn när den finns (OTA/rollback); tills dess player.sh direkt.
+ExecStart=/opt/entilldisplay/bin/player.sh vagg5
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target
