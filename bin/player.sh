@@ -17,6 +17,9 @@ IMG="$DIR/${NAME}.png"
 POLL="${POLL:-60}"          # sekunder mellan pollar
 mkdir -p "$DIR"
 
+# Städa mpv-barnen när playern avslutas (t.ex. när supervisorn startar om oss).
+trap 'pkill -f "mpv .*${DIR}/" 2>/dev/null' EXIT INT TERM
+
 show() {
   pkill -f "mpv .*${DIR}/" 2>/dev/null
   sleep 0.3

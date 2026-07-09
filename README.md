@@ -209,9 +209,10 @@ bakade i imagen — så samma image kan flashas på hur många kort som helst.
 - [x] `bootstrap.sh` — installerar mpv/curl/network-manager, player + systemd, tailscale.
 - [x] `provision.sh` — kör bootstrap på en ny skärm från Macen över tailnet.
 - [x] Ethernet-fallback-anslutning (kabel = alltid nät) i bootstrap.
-- [ ] `supervisor.sh` — OTA + syntaxkoll + rollback + good-stämpling.
-- [ ] Egen image via `sdm` (steg 2) — flasha-och-kör, first-boot-hook.
-- [ ] WiFi-funktioner i player (`nmcli`, failsafe, verifiering).
+- [x] `supervisor.sh` — OTA (conditional GET + `bash -n`) + rollback + good-stämpling.
+- [ ] WiFi-funktioner i player (`nmcli`, failsafe, verifiering) + privat config-poll över Tailscale.
+- [ ] Heartbeat → .52 + koppling till vakt-panelen.
+- [ ] Egen image via `sdm` — flasha-och-kör, first-boot-hook.
 - [ ] Privat config-poll över Tailscale (`.json` per skärm).
 - [ ] Heartbeat → .52 + koppling till vakt-panelen (Pi Watchguard).
 - [ ] Tailscale `tag:signage` + ACL + återanvändbar auth key.

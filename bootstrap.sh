@@ -46,15 +46,17 @@ if command -v nmcli >/dev/null 2>&1; then
   nmcli con mod eth-fallback connection.autoconnect-priority 100 2>/dev/null || true
 fi
 
-echo "==> installera player → $PREFIX"
+echo "==> installera supervisor + player → $PREFIX"
 install -d "$PREFIX/bin"
-curl -fsSL "$REPO/bin/player.sh" -o "$PREFIX/bin/player.sh"
-chmod +x "$PREFIX/bin/player.sh"
-bash -n "$PREFIX/bin/player.sh"   # syntaxkoll innan vi kör den
+for f in supervisor.sh player.sh; do
+  curl -fsSL "$REPO/bin/$f" -o "$PREFIX/bin/$f"
+  chmod +x "$PREFIX/bin/$f"
+  bash -n "$PREFIX/bin/$f"   # syntaxkoll innan vi kör
+done
 
 echo "==> systemd-tjänst (skärm=$NAME, media=$MEDIA_BASE, poll=${POLL}s, user=$RUN_USER)"
 curl -fsSL "$REPO/systemd/entilldisplay.service" -o /etc/systemd/system/entilldisplay.service
-sed -i "s#player.sh vagg5#player.sh $NAME#"                 /etc/systemd/system/entilldisplay.service
+sed -i "s#supervisor.sh vagg5#supervisor.sh $NAME#"         /etc/systemd/system/entilldisplay.service
 sed -i "s#^User=.*#User=$RUN_USER#"                          /etc/systemd/system/entilldisplay.service
 sed -i "s#^Environment=POLL=.*#Environment=POLL=$POLL#"      /etc/systemd/system/entilldisplay.service
 grep -q "MENY_BASE=" /etc/systemd/system/entilldisplay.service \

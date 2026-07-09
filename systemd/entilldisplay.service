@@ -8,8 +8,8 @@ Type=simple
 User=eriks
 SupplementaryGroups=video render
 Environment=POLL=60
-# Pekar på supervisorn när den finns (OTA/rollback); tills dess player.sh direkt.
-ExecStart=/opt/entilldisplay/bin/player.sh vagg5
+# Supervisorn kör player:n + hanterar OTA-uppdatering och rollback.
+ExecStart=/opt/entilldisplay/bin/supervisor.sh vagg5
 Restart=always
 RestartSec=10
 
