@@ -49,16 +49,26 @@ if command -v nmcli >/dev/null 2>&1; then
   nmcli con mod eth-fallback connection.autoconnect-priority 100 2>/dev/null || true
 fi
 
+# Hämta med FALLBACK: prova $REPO (ofta file:// = bakat på kortet) → faller tillbaka på publika
+# GitHub-raw om filen saknas/är tom. Skyddar mot FAT-korruption (fsck döpte om en bakad fil till
+# FSCK0000.000 → file:// hittade den ej → bootstrap loopade). Detta var den riktiga roten på vagg5.
+REPO_RAW="https://raw.githubusercontent.com/eriksjostedt/entilldisplay/main"
+fetch() { # $1=relativ sökväg  $2=målfil
+  curl -fsSL "$REPO/$1" -o "$2" 2>/dev/null && [ -s "$2" ] && return 0
+  echo "   ⚠ $REPO/$1 saknas/trasig → hämtar publikt: $REPO_RAW/$1"
+  curl -fsSL "$REPO_RAW/$1" -o "$2" && [ -s "$2" ]
+}
+
 echo "==> installera supervisor + player → $PREFIX"
 install -d "$PREFIX/bin"
 for f in supervisor.sh player.sh; do
-  curl -fsSL "$REPO/bin/$f" -o "$PREFIX/bin/$f"
+  fetch "bin/$f" "$PREFIX/bin/$f"
   chmod +x "$PREFIX/bin/$f"
   bash -n "$PREFIX/bin/$f"   # syntaxkoll innan vi kör
 done
 
 echo "==> systemd-tjänst (skärm=$NAME, media=$MEDIA_BASE, poll=${POLL}s, user=$RUN_USER)"
-curl -fsSL "$REPO/systemd/entilldisplay.service" -o /etc/systemd/system/entilldisplay.service
+fetch "systemd/entilldisplay.service" /etc/systemd/system/entilldisplay.service
 sed -i "s#supervisor.sh vagg5#supervisor.sh $NAME#"         /etc/systemd/system/entilldisplay.service
 sed -i "s#^User=.*#User=$RUN_USER#"                          /etc/systemd/system/entilldisplay.service
 sed -i "s#^Environment=POLL=.*#Environment=POLL=$POLL#"      /etc/systemd/system/entilldisplay.service
