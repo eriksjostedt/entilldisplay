@@ -56,6 +56,14 @@ printf '%s\n' "$CH"  > "$BOOT/entilldisplay-channel"
 cp "$HERE/firstboot.sh" "$BOOT/entilldisplay-firstboot.sh"
 chmod 600 "$BOOT/entilldisplay-authkey" 2>/dev/null || true
 
+# 3a. Baka repo-skripten på kortet → SJÄLVFÖRSÖRJANDE first boot (firstboot kör bootstrap
+#     via file://), inget GitHub-beroende när burken startar. (OTA sköts sen mot publika raw.)
+SRC="$BOOT/entilldisplay-src"; rm -rf "$SRC" 2>/dev/null; mkdir -p "$SRC/bin" "$SRC/systemd"
+cp "$HERE/bootstrap.sh" "$SRC/"
+cp "$HERE"/bin/*.sh       "$SRC/bin/"      2>/dev/null || true
+cp "$HERE"/systemd/*.service "$SRC/systemd/" 2>/dev/null || true
+echo "==> repo-skript bakade på kortet ($SRC)"
+
 # 3b. Valfritt: tvinga skärmläge (override av firstboots EDID-autodetect+720p-fallback)
 if [ -n "$MODE" ] && [ -f "$BOOT/cmdline.txt" ]; then
   if grep -q "video=HDMI" "$BOOT/cmdline.txt"; then
@@ -65,6 +73,20 @@ if [ -n "$MODE" ] && [ -f "$BOOT/cmdline.txt" ]; then
     printf '%s video=HDMI-A-1:%s\n' "$CUR" "$MODE" > "$BOOT/cmdline.txt"
     echo "==> manuellt skärmläge tvingat: $MODE"
   fi
+fi
+
+# 3c. Baka WiFi-creds från .52 (failsafe: firstboot sätter WiFi via nmcli om Imager-WiFi fallerar)
+WIFI_CONF=""
+for H in entill-intern.tailf0de83.ts.net entill-intern; do
+  WIFI_CONF="$(ssh -o ConnectTimeout=8 -o BatchMode=yes eriks@"$H" 'cat ~/.config/entill/sundbrokrog-wifi.conf' 2>/dev/null || true)"
+  [ -n "$WIFI_CONF" ] && break
+done
+if [ -n "$WIFI_CONF" ]; then
+  printf '%s\n' "$WIFI_CONF" > "$BOOT/entilldisplay-wifi"
+  chmod 600 "$BOOT/entilldisplay-wifi" 2>/dev/null || true
+  echo "==> WiFi-creds bakade (nmcli-failsafe)"
+else
+  echo "⚠ kunde ej hämta WiFi-creds från .52 — WiFi-failsafe ej bakad (Imager-WiFi måste då funka)"
 fi
 
 # 4. Koppla in firstboot i provisioneringen
