@@ -1,0 +1,14 @@
+[Unit]
+Description=entilldisplay first-boot (retry tills klart: WiFi + tailscale + bootstrap)
+After=network-online.target
+Wants=network-online.target
+StartLimitIntervalSec=0
+
+[Service]
+Type=simple
+ExecStart=/bin/bash /boot/firmware/entilldisplay-firstboot.sh
+Restart=on-failure
+RestartSec=30
+
+[Install]
+WantedBy=multi-user.target

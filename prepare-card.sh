@@ -54,6 +54,7 @@ done
 printf '%s'   "$KEY" > "$BOOT/entilldisplay-authkey"
 printf '%s\n' "$CH"  > "$BOOT/entilldisplay-channel"
 cp "$HERE/firstboot.sh" "$BOOT/entilldisplay-firstboot.sh"
+cp "$HERE/systemd/entilldisplay-firstboot.service" "$BOOT/entilldisplay-firstboot.service"
 chmod 600 "$BOOT/entilldisplay-authkey" 2>/dev/null || true
 
 # 3a. Baka repo-skripten på kortet → SJÄLVFÖRSÖRJANDE first boot (firstboot kör bootstrap
@@ -89,16 +90,17 @@ else
   echo "⚠ kunde ej hämta WiFi-listan från .52 — WiFi-failsafe ej bakad (Imager-WiFi måste då funka)"
 fi
 
-# 4. Koppla in firstboot i provisioneringen
+# 4. Koppla in RETRY-tjänsten (installera + enable den bakade servicen). Den kör firstboot och
+#    FÖRSÖKER IGEN var 30:e s tills WiFi+tailscale+bootstrap+player alla lyckats — aldrig handpåläggning.
 if [ "$MODE" = "cloudinit" ]; then
   UD="$BOOT/user-data"
   if grep -q "entilldisplay-firstboot" "$UD"; then
     echo "==> user-data redan injicerad — hoppar"
   elif grep -q "^runcmd:" "$UD"; then
-    awk '{print} /^runcmd:/ && !d {print "  - [ bash, /boot/firmware/entilldisplay-firstboot.sh ]"; d=1}' "$UD" > "$UD.tmp" && mv "$UD.tmp" "$UD"
-    echo "==> runcmd tillagd i user-data (cloud-init kör firstboot vid första boot)"
+    awk '{print} /^runcmd:/ && !d {print "  - [ cp, /boot/firmware/entilldisplay-firstboot.service, /etc/systemd/system/entilldisplay-firstboot.service ]"; print "  - [ systemctl, enable, --now, entilldisplay-firstboot.service ]"; d=1}' "$UD" > "$UD.tmp" && mv "$UD.tmp" "$UD"
+    echo "==> runcmd tillagd i user-data (installerar + startar retry-tjänsten)"
   else
-    printf '\nruncmd:\n  - [ bash, /boot/firmware/entilldisplay-firstboot.sh ]\n' >> "$UD"
+    printf '\nruncmd:\n  - [ cp, /boot/firmware/entilldisplay-firstboot.service, /etc/systemd/system/entilldisplay-firstboot.service ]\n  - [ systemctl, enable, --now, entilldisplay-firstboot.service ]\n' >> "$UD"
     echo "==> runcmd-block tillagt i user-data"
   fi
 else
@@ -108,24 +110,14 @@ else
   else
     TMP="$(mktemp)"
     { head -n1 "$FR"; cat <<'BLOCK'
-# --- entilldisplay turnkey first-boot (auto-injicerad av prepare-card.sh) ---
-cat > /etc/systemd/system/entilldisplay-firstboot.service <<'UNIT'
-[Unit]
-Description=entilldisplay first-boot (tailscale join + bootstrap)
-After=network-online.target
-Wants=network-online.target
-[Service]
-Type=oneshot
-ExecStart=/bin/bash /boot/firmware/entilldisplay-firstboot.sh
-[Install]
-WantedBy=multi-user.target
-UNIT
+# --- entilldisplay retry-firstboot (auto-injicerad av prepare-card.sh) ---
+install -m644 /boot/firmware/entilldisplay-firstboot.service /etc/systemd/system/entilldisplay-firstboot.service
 systemctl enable entilldisplay-firstboot.service || true
 # --- /entilldisplay ---
 BLOCK
       tail -n +2 "$FR"; } > "$TMP"
     mv "$TMP" "$FR"
-    echo "==> firstrun.sh injicerad (network-online oneshot)"
+    echo "==> firstrun.sh injicerad (retry-tjänst)"
   fi
 fi
 
