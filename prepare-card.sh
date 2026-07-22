@@ -18,10 +18,14 @@
 #
 # Vid kort-tillverkning sitter vi INTE på lokalt nät → allt mot .52 går via Tailscale.
 #
-# Användning:  ./prepare-card.sh <kanal>        kanal = dorr | vagg1 | vagg2 | vagg3 | vagg4 | vagg5
+# Användning:  ./prepare-card.sh <kanal> [skärmläge]
+#   kanal    = dorr | vagg1..vagg5
+#   skärmläge= valfritt, t.ex. 1920x1080@60 → tvingar HDMI-läget. Utelämnas → firstboot
+#              autodetekterar via EDID, och faller tillbaka på 720p om EDID saknas.
 set -euo pipefail
 CH="${1:?ange kanal: dorr eller vagg1..vagg5}"
 case "$CH" in dorr|vagg1|vagg2|vagg3|vagg4|vagg5) ;; *) echo "✗ ogiltig kanal: $CH (dorr|vagg1..vagg5)"; exit 1;; esac
+MODE="${2:-}"   # valfritt manuellt skärmläge, t.ex. 1920x1080@60. Utelämnas → firstboot autodetekterar
 HERE="$(cd "$(dirname "$0")" && pwd)"
 
 # 1. Hitta boot-partitionen (Bookworm/Trixie: bootfs)
@@ -51,6 +55,17 @@ printf '%s'   "$KEY" > "$BOOT/entilldisplay-authkey"
 printf '%s\n' "$CH"  > "$BOOT/entilldisplay-channel"
 cp "$HERE/firstboot.sh" "$BOOT/entilldisplay-firstboot.sh"
 chmod 600 "$BOOT/entilldisplay-authkey" 2>/dev/null || true
+
+# 3b. Valfritt: tvinga skärmläge (override av firstboots EDID-autodetect+720p-fallback)
+if [ -n "$MODE" ] && [ -f "$BOOT/cmdline.txt" ]; then
+  if grep -q "video=HDMI" "$BOOT/cmdline.txt"; then
+    echo "==> video= finns redan i cmdline — rör ej"
+  else
+    CUR="$(tr -d '\r\n' < "$BOOT/cmdline.txt")"
+    printf '%s video=HDMI-A-1:%s\n' "$CUR" "$MODE" > "$BOOT/cmdline.txt"
+    echo "==> manuellt skärmläge tvingat: $MODE"
+  fi
+fi
 
 # 4. Koppla in firstboot i provisioneringen
 if [ "$MODE" = "cloudinit" ]; then
