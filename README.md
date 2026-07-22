@@ -217,3 +217,30 @@ bakade i imagen — så samma image kan flashas på hur många kort som helst.
 - [ ] Heartbeat → .52 + koppling till vakt-panelen (Pi Watchguard).
 - [ ] Tailscale `tag:signage` + ACL + återanvändbar auth key.
 - [ ] Byt .48-piloten till en riktig 3B/4 + rulla ut på restaurangens skärmar; säg upp pisignage.
+
+## Turnkey-flöde (image utan tangentbord) — `prepare-card.sh`
+
+Mål: flasha ett kort → sätt i Pi → den bootar, joinar tailnet och visar sin kanal, **utan
+tangentbord**. En gemensam bas; kanal + värdnamn sätts per kort (INTE en image per skärm).
+
+1. **Pi Imager v2 → OS-anpassning** (kugghjulet), innan flash:
+   - Värdnamn: `krog-dorr`, `krog-vagg5`, …
+   - SSH: *tillåt endast publik nyckel* → klistra Macens nyckel
+   - WiFi: `Tele2Internet_1CE0A` (lösen i `.52:~/.config/entill/sundbrokrog-wifi.conf`)
+   - Användarnamn + lösen ← **tar bort första-boot-prompten**
+   - Land/tangentbord: SE
+2. `./prepare-card.sh <kanal>` på Macen medan kortet sitter i (`dorr` | `vagg1`…`vagg5`).
+   Myntar en **färsk** tailscale-authkey via `.52` (över tailnet), bakar in kanal + authkey +
+   `firstboot.sh` på bootfs och injicerar en network-online oneshot i Imagers `firstrun.sh`.
+3. Mata ut → sätt i Pi → slå på. `firstboot.sh` joinar tailnet + kör `bootstrap.sh` och
+   raderar authkey:en från kortet. Felsök: `ssh eriks@<värdnamn>` → `sudo cat /var/log/entilldisplay-firstboot.log`.
+
+> **Vid kort-tillverkning är vi INTE på lokalt nät** → allt mot `.52` går via **Tailscale**
+> (Macens tailnet måste vara uppe).
+
+### ⚠️ Järnkoll: tailscale-behörighet utgår
+Authkeys och PAT:en (`~/.config/entill/tailscale-api-key`) **utgår ~2026-10-08**. `prepare-card.sh`
+myntar färsk nyckel per kort, men **mynt-behörigheten (PAT) utgår också**. Permanent fix: skapa en
+**OAuth-klient** (utgår aldrig) i Tailscale-adminen (scope Auth Keys=write, tag:signage) och lägg
+`client_id`/`client_secret` i `.52:~/.config/entill/tailscale-oauth` (två rader). `mint-authkey.sh`
+väljer då den automatiskt — inga datum att bevaka mer.
