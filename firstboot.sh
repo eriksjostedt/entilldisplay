@@ -76,6 +76,9 @@ if [ -n "$KEY" ] && ! tailscale status >/dev/null 2>&1; then
   # --accept-dns=false: låt INTE tailscale kapa resolvern (behåll WiFi/publik DNS för apt + player).
   tailscale up --authkey="$KEY" --advertise-tags=tag:signage --hostname="$(hostname)" --ssh --accept-dns=false || echo "VARNING: tailscale up misslyckades (visning funkar ändå)"
 fi
+# ALLTID (även redan ansluten från tidigare boot): applicera SSH + DNS-inställning idempotent.
+# Utan detta får en burk som joinade UTAN --ssh aldrig SSH påslaget vid omstart.
+tailscale set --ssh --accept-dns=false 2>/dev/null || true
 
 # 2b. DNS-GARANTI innan bootstrap — utan detta dör apt tyst och firstboot loopar för evigt.
 ensure_dns || exit 1
