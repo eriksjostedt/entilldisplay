@@ -18,28 +18,31 @@ REPO="https://raw.githubusercontent.com/eriksjostedt/entilldisplay/main"
 [ -n "$CH" ] || { echo "FEL: kanal saknas och kunde ej härledas ur värdnamnet"; exit 1; }
 echo "kanal=$CH  (värdnamn=$(hostname))"
 
-# 0. WiFi-failsafe — lita ALDRIG på Imagers WiFi. Har vi internet? Om inte: konfigurera
-#    WiFi själva via nmcli från bakade creds (entilldisplay-wifi: SSID=/PSK=). Lägg bara TILL,
-#    radera aldrig ett fungerande nät. Sätt land + lyft rfkill (vanligaste tysta felet).
+# 0. WiFi — provisionera ALLA kända nät via nmcli (roaming mellan platser: Sundbrokrog/Knäppa/entill).
+#    Litar ej på Imagers WiFi. add-only (raderar aldrig ett fungerande nät). Sätt land + lyft rfkill
+#    (vanligaste tysta felet). NM ansluter automatiskt till det nät som finns i räckvidd.
+#    Format i entilldisplay-wifi: en rad per nät, "SSID<TAB>PSK".
 have_net() { ping -c1 -W3 1.1.1.1 >/dev/null 2>&1 || ping -c1 -W3 8.8.8.8 >/dev/null 2>&1; }
-if ! have_net; then
-  echo "ingen internet → försöker konfigurera WiFi via nmcli"
-  WIFI="$BOOT/entilldisplay-wifi"
-  if [ -f "$WIFI" ]; then
-    SSID="$(sed -n 's/^SSID=//p' "$WIFI" | tr -d '\r\n')"
-    PSK="$(sed -n 's/^PSK=//p' "$WIFI" | tr -d '\r\n')"
-    raspi-config nonint do_wifi_country SE 2>/dev/null || iw reg set SE 2>/dev/null || true
-    rfkill unblock wifi 2>/dev/null || true
-    if [ -n "$SSID" ] && command -v nmcli >/dev/null 2>&1; then
-      nmcli radio wifi on 2>/dev/null || true
-      nmcli dev wifi connect "$SSID" password "$PSK" name "entill-wifi" 2>/dev/null \
-        || nmcli con up "entill-wifi" 2>/dev/null || true
+WIFI="$BOOT/entilldisplay-wifi"
+if [ -f "$WIFI" ] && command -v nmcli >/dev/null 2>&1; then
+  raspi-config nonint do_wifi_country SE 2>/dev/null || iw reg set SE 2>/dev/null || true
+  rfkill unblock wifi 2>/dev/null || true
+  nmcli radio wifi on 2>/dev/null || true
+  while IFS=$'\t' read -r SSID PSK _; do
+    case "$SSID" in ''|\#*) continue;; esac
+    CN="entill-$SSID"
+    nmcli -g NAME con show 2>/dev/null | grep -qx "$CN" && { echo "WiFi finns redan: $SSID"; continue; }
+    if nmcli con add type wifi con-name "$CN" ifname wlan0 ssid "$SSID" 2>/dev/null \
+       && nmcli con modify "$CN" wifi-sec.key-mgmt wpa-psk wifi-sec.psk "$PSK" connection.autoconnect yes 2>/dev/null; then
+      echo "WiFi tillagt: $SSID"
+    else
+      echo "WiFi-tillägg misslyckades: $SSID"
     fi
-    for _ in $(seq 1 20); do have_net && { echo "WiFi uppe (nmcli)"; break; }; sleep 3; done
-  else
-    echo "VARNING: ingen bakad WiFi-cred (entilldisplay-wifi) — kan ej rädda WiFi"
-  fi
+  done < "$WIFI"
 fi
+# säkerställ internet innan bootstrap (vänta in om nyss uppkopplat)
+have_net || { echo "väntar på internet …"; for _ in $(seq 1 20); do have_net && break; sleep 3; done; }
+have_net && echo "internet: OK" || echo "VARNING: fortfarande inget internet"
 
 # 1. Tailscale — installera + join (fjärrhantering)
 command -v tailscale >/dev/null 2>&1 || { curl -fsSL https://tailscale.com/install.sh | sh || true; }

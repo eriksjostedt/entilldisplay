@@ -75,18 +75,18 @@ if [ -n "$MODE" ] && [ -f "$BOOT/cmdline.txt" ]; then
   fi
 fi
 
-# 3c. Baka WiFi-creds från .52 (failsafe: firstboot sätter WiFi via nmcli om Imager-WiFi fallerar)
+# 3c. Baka fleet-WiFi-listan från .52 (alla kända nät → roaming; firstboot lägger in dem via nmcli)
 WIFI_CONF=""
 for H in entill-intern.tailf0de83.ts.net entill-intern; do
-  WIFI_CONF="$(ssh -o ConnectTimeout=8 -o BatchMode=yes eriks@"$H" 'cat ~/.config/entill/sundbrokrog-wifi.conf' 2>/dev/null || true)"
+  WIFI_CONF="$(ssh -o ConnectTimeout=8 -o BatchMode=yes eriks@"$H" 'cat ~/.config/entill/signage-wifi.conf' 2>/dev/null || true)"
   [ -n "$WIFI_CONF" ] && break
 done
 if [ -n "$WIFI_CONF" ]; then
   printf '%s\n' "$WIFI_CONF" > "$BOOT/entilldisplay-wifi"
   chmod 600 "$BOOT/entilldisplay-wifi" 2>/dev/null || true
-  echo "==> WiFi-creds bakade (nmcli-failsafe)"
+  echo "==> WiFi-lista bakad ($(grep -c . "$BOOT/entilldisplay-wifi") nät)"
 else
-  echo "⚠ kunde ej hämta WiFi-creds från .52 — WiFi-failsafe ej bakad (Imager-WiFi måste då funka)"
+  echo "⚠ kunde ej hämta WiFi-listan från .52 — WiFi-failsafe ej bakad (Imager-WiFi måste då funka)"
 fi
 
 # 4. Koppla in firstboot i provisioneringen
