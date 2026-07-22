@@ -94,6 +94,15 @@ fi
 #    FÖRSÖKER IGEN var 30:e s tills WiFi+tailscale+bootstrap+player alla lyckats — aldrig handpåläggning.
 if [ "$MECH" = "cloudinit" ]; then
   UD="$BOOT/user-data"
+  # SÄKERSTÄLL lösenordsinloggning som fallback (Imager sätter ssh_pwauth:false när nyckel klistras
+  # in → låser oss ute vid nyckelstrul). Vi tvingar true; nyckeln finns ändå kvar. Räddade vagg5.
+  if grep -q "^ssh_pwauth:" "$UD"; then
+    sed -i '' 's/^ssh_pwauth:.*/ssh_pwauth: true/' "$UD" 2>/dev/null || sed -i 's/^ssh_pwauth:.*/ssh_pwauth: true/' "$UD"
+    echo "==> ssh_pwauth tvingat till true (lösenordsfallback)"
+  elif ! grep -q "ssh_pwauth" "$UD"; then
+    printf '\nssh_pwauth: true\n' >> "$UD"
+    echo "==> ssh_pwauth: true tillagt (lösenordsfallback)"
+  fi
   if grep -q "entilldisplay-firstboot" "$UD"; then
     echo "==> user-data redan injicerad — hoppar"
   elif grep -q "^runcmd:" "$UD"; then
