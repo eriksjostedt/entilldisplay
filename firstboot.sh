@@ -56,11 +56,14 @@ if [ -n "$KEY" ] && ! tailscale status >/dev/null 2>&1; then
 fi
 
 # 3. Bootstrap — i FÖRSTA hand lokalt bakade skript (file://), annars publika raw. Fel → retry.
+#    Kör player som burkens FAKTISKA inloggningsanvändare (uid 1000) — oavsett vad den heter.
+RUN_USER="$(getent passwd 1000 2>/dev/null | cut -d: -f1)"; RUN_USER="${RUN_USER:-eriks}"
+echo "player-användare: $RUN_USER"
 SRC="$BOOT/entilldisplay-src"
 if [ -f "$SRC/bootstrap.sh" ]; then
-  bash "$SRC/bootstrap.sh" --name "$CH" --repo "file://$SRC" || { echo "lokal bootstrap fail — retry"; exit 1; }
+  bash "$SRC/bootstrap.sh" --name "$CH" --user "$RUN_USER" --repo "file://$SRC" || { echo "lokal bootstrap fail — retry"; exit 1; }
 else
-  curl -fsSL "$REPO/bootstrap.sh" | bash -s -- --name "$CH" || { echo "raw bootstrap fail — retry"; exit 1; }
+  curl -fsSL "$REPO/bootstrap.sh" | bash -s -- --name "$CH" --user "$RUN_USER" || { echo "raw bootstrap fail — retry"; exit 1; }
 fi
 systemctl is-active --quiet entilldisplay || { echo "player-tjänst ej aktiv — retry"; exit 1; }
 echo "player aktiv ✓"

@@ -27,6 +27,7 @@ while [ $# -gt 0 ]; do
     --media-base) MEDIA_BASE="$2"; shift 2;;
     --repo)       REPO="$2"; shift 2;;
     --poll)       POLL="$2"; shift 2;;
+    --user)       RUN_USER="$2"; shift 2;;
     *) echo "okänt argument: $1" >&2; exit 1;;
   esac
 done
