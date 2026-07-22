@@ -25,6 +25,25 @@ CH="$(tr -d ' \r\n' < "$BOOT/entilldisplay-channel" 2>/dev/null || true)"
 echo "kanal=$CH  (värdnamn=$(hostname))"
 
 have_net() { ping -c1 -W3 1.1.1.1 >/dev/null 2>&1 || ping -c1 -W3 8.8.8.8 >/dev/null 2>&1; }
+have_dns() { getent hosts deb.debian.org >/dev/null 2>&1 || getent hosts github.com >/dev/null 2>&1; }
+# DNS-GARANTI: ping räcker inte — apt/curl kräver namnuppslag. Om DNS är trasig (dåligt WiFi-DNS
+# eller kapad resolver) tvingar vi pålitlig publik DNS på ALLA aktiva anslutningar (bestående),
+# och skriver i värsta fall resolv.conf direkt. Detta var roten till att bootstrap loopade.
+ensure_dns() {
+  have_dns && { echo "DNS: OK"; return 0; }
+  echo "DNS trasig — tvingar Google DNS 8.8.8.8/8.8.4.4 …"
+  if command -v nmcli >/dev/null 2>&1; then
+    for c in $(nmcli -g NAME con show --active 2>/dev/null); do
+      nmcli con mod "$c" ipv4.dns "8.8.8.8 8.8.4.4 1.1.1.1" ipv4.ignore-auto-dns yes 2>/dev/null || true
+    done
+    nmcli networking off 2>/dev/null; sleep 1; nmcli networking on 2>/dev/null || true
+    for _ in $(seq 1 8); do have_dns && break; sleep 2; done
+  fi
+  have_dns && { echo "DNS: OK (tvingad)"; return 0; }
+  printf 'nameserver 8.8.8.8\nnameserver 8.8.4.4\n' > /etc/resolv.conf 2>/dev/null || true
+  have_dns && { echo "DNS: OK (resolv.conf)"; return 0; }
+  echo "DNS fortfarande trasig — retry"; return 1
+}
 
 # 0. WiFi — provisionera ALLA kända nät (roaming), add-only, sätt land + lyft rfkill.
 WIFI="$BOOT/entilldisplay-wifi"
@@ -37,7 +56,7 @@ if [ -f "$WIFI" ] && command -v nmcli >/dev/null 2>&1; then
     CN="entill-$SSID"
     nmcli -g NAME con show 2>/dev/null | grep -qx "$CN" && continue           # add-only
     nmcli con add type wifi con-name "$CN" ifname wlan0 ssid "$SSID" 2>/dev/null \
-      && nmcli con modify "$CN" wifi-sec.key-mgmt wpa-psk wifi-sec.psk "$PSK" connection.autoconnect yes 2>/dev/null \
+      && nmcli con modify "$CN" wifi-sec.key-mgmt wpa-psk wifi-sec.psk "$PSK" connection.autoconnect yes ipv4.dns "8.8.8.8 8.8.4.4 1.1.1.1" 2>/dev/null \
       && echo "WiFi tillagt: $SSID" || echo "WiFi-tillägg misslyckades: $SSID"
   done < "$WIFI"
 fi
@@ -54,8 +73,12 @@ echo "internet: OK"
 command -v tailscale >/dev/null 2>&1 || { curl -fsSL https://tailscale.com/install.sh | sh || { echo "tailscale-install fail — retry"; exit 1; }; }
 KEY="$(cat "$BOOT/entilldisplay-authkey" 2>/dev/null || true)"
 if [ -n "$KEY" ] && ! tailscale status >/dev/null 2>&1; then
-  tailscale up --authkey="$KEY" --advertise-tags=tag:signage --hostname="$(hostname)" --ssh || echo "VARNING: tailscale up misslyckades (visning funkar ändå)"
+  # --accept-dns=false: låt INTE tailscale kapa resolvern (behåll WiFi/publik DNS för apt + player).
+  tailscale up --authkey="$KEY" --advertise-tags=tag:signage --hostname="$(hostname)" --ssh --accept-dns=false || echo "VARNING: tailscale up misslyckades (visning funkar ändå)"
 fi
+
+# 2b. DNS-GARANTI innan bootstrap — utan detta dör apt tyst och firstboot loopar för evigt.
+ensure_dns || exit 1
 
 # 3. Bootstrap — i FÖRSTA hand lokalt bakade skript (file://), annars publika raw. Fel → retry.
 #    Kör player som burkens FAKTISKA inloggningsanvändare (uid 1000) — oavsett vad den heter.

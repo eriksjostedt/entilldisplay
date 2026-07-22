@@ -36,8 +36,10 @@ done
 
 echo "==> paket (mpv, curl, network-manager)"
 export DEBIAN_FRONTEND=noninteractive
-apt-get update -q
-apt-get install -y --no-install-recommends mpv curl network-manager
+# Tålig apt: retry vid övergående nät-/spegelhicka i st f att avbryta hela bootstrap.
+apt_retry() { local i; for i in 1 2 3 4 5; do "$@" && return 0; echo "   apt-försök $i misslyckades — väntar 10s"; sleep 10; done; return 1; }
+apt_retry apt-get update -q
+apt_retry apt-get install -y --no-install-recommends mpv curl network-manager
 
 echo "==> ethernet-fallback (kabel = alltid nät, högsta prioritet)"
 if command -v nmcli >/dev/null 2>&1; then
