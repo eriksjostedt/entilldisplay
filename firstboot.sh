@@ -12,6 +12,8 @@
 set -u
 BOOT=/boot/firmware; [ -d "$BOOT" ] || BOOT=/boot
 LOG=/var/log/entilldisplay-firstboot.log; exec >>"$LOG" 2>&1
+# Spegla loggen till FAT-boot-partitionen vid VARJE avslut → läsbar på Macen även utan SSH.
+trap 'cp -f "$LOG" "$BOOT/last-firstboot.log" 2>/dev/null || true' EXIT
 MARK=/var/lib/entilldisplay/firstboot.done
 REPO="https://raw.githubusercontent.com/eriksjostedt/entilldisplay/main"
 [ -f "$MARK" ] && { echo "$(date -Is) redan klar — inget att göra"; exit 0; }
