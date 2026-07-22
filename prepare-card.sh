@@ -32,12 +32,12 @@ HERE="$(cd "$(dirname "$0")" && pwd)"
 BOOT=""; for v in /Volumes/bootfs /Volumes/boot; do [ -d "$v" ] && BOOT="$v" && break; done
 [ -n "$BOOT" ] || { echo "✗ Hittar ingen boot-partition (/Volumes/bootfs). Flasha med Imager och låt kortet sitta i."; exit 1; }
 
-# Mekanism: cloud-init (user-data) eller legacy (firstrun.sh)?
-MODE=""
-[ -f "$BOOT/user-data" ] && MODE="cloudinit"
-[ -z "$MODE" ] && [ -f "$BOOT/firstrun.sh" ] && MODE="firstrun"
-[ -n "$MODE" ] || { echo "✗ Varken user-data (cloud-init) eller firstrun.sh på $BOOT — sätt OS-anpassning i Imager innan du flashar."; exit 1; }
-echo "==> provisioneringsmekanism: $MODE"
+# Mekanism: cloud-init (user-data) eller legacy (firstrun.sh)?  (OBS: egen variabel — MODE = skärmläge)
+MECH=""
+[ -f "$BOOT/user-data" ] && MECH="cloudinit"
+[ -z "$MECH" ] && [ -f "$BOOT/firstrun.sh" ] && MECH="firstrun"
+[ -n "$MECH" ] || { echo "✗ Varken user-data (cloud-init) eller firstrun.sh på $BOOT — sätt OS-anpassning i Imager innan du flashar."; exit 1; }
+echo "==> provisioneringsmekanism: $MECH"
 
 # 2. Mynta färsk tailscale-authkey via .52 ÖVER TAILSCALE (kortet får aldrig en gammal nyckel).
 command -v tailscale >/dev/null 2>&1 && tailscale status >/dev/null 2>&1 || \
@@ -92,7 +92,7 @@ fi
 
 # 4. Koppla in RETRY-tjänsten (installera + enable den bakade servicen). Den kör firstboot och
 #    FÖRSÖKER IGEN var 30:e s tills WiFi+tailscale+bootstrap+player alla lyckats — aldrig handpåläggning.
-if [ "$MODE" = "cloudinit" ]; then
+if [ "$MECH" = "cloudinit" ]; then
   UD="$BOOT/user-data"
   if grep -q "entilldisplay-firstboot" "$UD"; then
     echo "==> user-data redan injicerad — hoppar"
@@ -123,7 +123,7 @@ fi
 
 sync
 echo
-echo "✓ Kort klart för kanal: $CH  (mekanism: $MODE)"
+echo "✓ Kort klart för kanal: $CH  (mekanism: $MECH)"
 echo "  Mata ut, sätt i Pi:n, slå på → joinar WiFi + tailnet + visar $CH utan tangentbord."
 echo "  Authkey raderas från kortet efter första boot. SSH-user = det du satte i Imager (t.ex. krog-dorr)."
 echo "  Felsök över tailnet:  ssh <user>@<värdnamn>  ·  sudo cat /var/log/entilldisplay-firstboot.log"
