@@ -52,7 +52,7 @@ echo "internet: OK"
 command -v tailscale >/dev/null 2>&1 || { curl -fsSL https://tailscale.com/install.sh | sh || { echo "tailscale-install fail — retry"; exit 1; }; }
 KEY="$(cat "$BOOT/entilldisplay-authkey" 2>/dev/null || true)"
 if [ -n "$KEY" ] && ! tailscale status >/dev/null 2>&1; then
-  tailscale up --authkey="$KEY" --advertise-tags=tag:signage --hostname="$(hostname)" || echo "VARNING: tailscale up misslyckades (visning funkar ändå)"
+  tailscale up --authkey="$KEY" --advertise-tags=tag:signage --hostname="$(hostname)" --ssh || echo "VARNING: tailscale up misslyckades (visning funkar ändå)"
 fi
 
 # 3. Bootstrap — i FÖRSTA hand lokalt bakade skript (file://), annars publika raw. Fel → retry.
