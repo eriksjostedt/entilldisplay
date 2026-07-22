@@ -242,5 +242,5 @@ tangentbord**. En gemensam bas; kanal + värdnamn sätts per kort (INTE en image
 Authkeys och PAT:en (`~/.config/entill/tailscale-api-key`) **utgår ~2026-10-08**. `prepare-card.sh`
 myntar färsk nyckel per kort, men **mynt-behörigheten (PAT) utgår också**. Permanent fix: skapa en
 **OAuth-klient** (utgår aldrig) i Tailscale-adminen (scope Auth Keys=write, tag:signage) och lägg
-`client_id`/`client_secret` i `.52:~/.config/entill/tailscale-oauth` (två rader). `mint-authkey.sh`
+`client_id`/`client_secret` i `.52:~/.config/entill/tailscale-oauth` (två rader). `mint-authkey.py`
 väljer då den automatiskt — inga datum att bevaka mer.

@@ -32,7 +32,7 @@ command -v tailscale >/dev/null 2>&1 && tailscale status >/dev/null 2>&1 || \
 echo "==> myntar färsk tailscale-authkey via .52 över tailnet …"
 KEY=""
 for H in entill-intern.tailf0de83.ts.net entill-intern; do
-  KEY="$(ssh -o ConnectTimeout=10 -o BatchMode=yes eriks@"$H" 'bash -s' < "$HERE/mint-authkey.sh" 2>/dev/null | tr -d ' \r\n' || true)"
+  KEY="$(ssh -o ConnectTimeout=10 -o BatchMode=yes eriks@"$H" 'python3 -' < "$HERE/mint-authkey.py" 2>/dev/null | tr -d ' \r\n' || true)"
   [ -n "$KEY" ] && break
 done
 [ -n "$KEY" ] || { echo "✗ Kunde inte mynta authkey via .52 över Tailscale. Är tailnet uppe? (tailscale status) Har PAT/OAuth gått ut? (se järnkoll i README)"; exit 1; }
