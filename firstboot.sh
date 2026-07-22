@@ -103,18 +103,10 @@ for s in entilldisplay-authkey entilldisplay-wifi; do
 done
 systemctl disable entilldisplay-firstboot.service 2>/dev/null || true
 
-# 4. Skärmläge — EDID→native, annars 720p-fallback (om ingen manuell video= redan satt). Reboot om ändrat.
-CL="$BOOT/cmdline.txt"; NEED_REBOOT=""
-if [ -f "$CL" ] && ! grep -q "video=HDMI" "$CL"; then
-  EDID_BYTES=0
-  for e in /sys/class/drm/card*-HDMI-A-1/edid; do [ -f "$e" ] && EDID_BYTES=$(wc -c < "$e" 2>/dev/null) && break; done
-  if [ "${EDID_BYTES:-0}" -lt 128 ]; then
-    sed -i 's/$/ video=HDMI-A-1:1280x720@60/' "$CL"
-    echo "ingen EDID (${EDID_BYTES} byte) → 720p-fallback (startar om)"; NEED_REBOOT=1
-  else
-    echo "EDID finns (${EDID_BYTES} byte) → KMS autodetekterar native"
-  fi
-fi
-echo "=== firstboot KLAR (kanal=$CH) ==="
-[ -n "$NEED_REBOOT" ] && { sync; sleep 2; reboot; }
+# 4. Skärmläge — TVINGA ALDRIG ett läge här, och starta ALDRIG om.
+#    Bakgrund: den gamla auto-fallbacken (EDID<128 → tvinga 720p + reboot) HÄNGDE vägg1 —
+#    native/KMS-default fungerade (visade rätt bild), men det tvingade 720p:t dödade skärmen.
+#    Behöver en specifik skärm ett fast läge → sätt det vid preppning (skrivs i cmdline INNAN
+#    boot, ingen omstart): ./prepare-card.sh <kanal> 1920x1080@60
+echo "=== firstboot KLAR (kanal=$CH) — skärmläge: $(grep -o 'video=HDMI[^ ]*' "$BOOT/cmdline.txt" 2>/dev/null || echo 'native/EDID') ==="
 exit 0
