@@ -11,9 +11,9 @@
 #   entilldisplay-src/     → bakade repo-skript (bootstrap.sh + bin/ + systemd/) för file://-install
 set -u
 BOOT=/boot/firmware; [ -d "$BOOT" ] || BOOT=/boot
-LOG=/var/log/entilldisplay-firstboot.log; exec >>"$LOG" 2>&1
-# Spegla loggen till FAT-boot-partitionen vid VARJE avslut → läsbar på Macen även utan SSH.
-trap 'cp -f "$LOG" "$BOOT/last-firstboot.log" 2>/dev/null || true' EXIT
+# Logg DIREKT till FAT-boot-partitionen i realtid → läsbar på Macen ÄVEN om firstboot hänger
+# mitt i ett steg (då hinner ingen exit-trap köra). Stderr med, obuffrat per rad.
+LOG="$BOOT/last-firstboot.log"; exec >>"$LOG" 2>&1
 MARK=/var/lib/entilldisplay/firstboot.done
 REPO="https://raw.githubusercontent.com/eriksjostedt/entilldisplay/main"
 [ -f "$MARK" ] && { echo "$(date -Is) redan klar — inget att göra"; exit 0; }
