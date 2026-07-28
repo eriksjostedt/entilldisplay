@@ -18,7 +18,13 @@ POLL="${POLL:-60}"          # sekunder mellan pollar
 mkdir -p "$DIR"
 
 # Städa mpv-barnen när playern avslutas (t.ex. när supervisorn startar om oss).
-trap 'pkill -f "mpv .*${DIR}/" 2>/dev/null' EXIT INT TERM
+# VIKTIGT: TERM/INT måste AVSLUTA. Tidigare körde traphanteraren bara pkill och lät
+# sedan loopen fortsätta — signalen swaldes, playern vägrade dö, och supervisorns
+# "kill $pid" vid OTA hade ingen effekt. Nya versioner installerades men togs
+# ALDRIG i bruk. (Upptäckt 2026-07-28: en player levde 897 s efter sitt dödsbud.)
+cleanup(){ pkill -f "mpv .*${DIR}/" 2>/dev/null; }
+trap cleanup EXIT
+trap 'cleanup; exit 0' INT TERM
 
 show() {
   pkill -f "mpv .*${DIR}/" 2>/dev/null

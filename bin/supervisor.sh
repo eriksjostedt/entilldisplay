@@ -67,7 +67,20 @@ while true; do
     # OTA
     if [ $((now-last_update)) -ge "$POLL_UPDATE" ]; then
       last_update=$now
-      if fetch_update; then log "ny player → startar om"; kill "$pid" 2>/dev/null; fi
+      if fetch_update; then
+        log "ny player → startar om"
+        kill "$pid" 2>/dev/null
+        # Eskalera. En player kan sitta fast i en lång curl-timeout (~135 s) och
+        # hinner då inte reagera på TERM — eller vara en gammal version vars trap
+        # inte avslutar alls. Utan detta installeras nya versioner utan att någonsin
+        # tas i bruk, och OTA:n är i praktiken död.
+        for _ in $(seq 1 20); do kill -0 "$pid" 2>/dev/null || break; sleep 1; done
+        if kill -0 "$pid" 2>/dev/null; then
+          log "player svarade ej på TERM efter 20 s — SIGKILL"
+          pkill -f "mpv .*$STATE/" 2>/dev/null
+          kill -9 "$pid" 2>/dev/null
+        fi
+      fi
     fi
     sleep 5
   done
