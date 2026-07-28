@@ -35,10 +35,24 @@ show() {
   esac
 }
 
-# Initial hämtning — blockera tills vi fått en bild (tål att nätet inte är uppe vid boot).
-until curl -fsS -o "$IMG" "$URL"; do logger -t menyskarm "väntar på nät/bild…"; sleep 10; done
-logger -t menyskarm "startad ($NAME), visar första bilden"
-show "$IMG"
+# Har vi en cachad bild sedan tidigare: VISA DEN DIREKT och gå vidare till poll-loopen.
+# Skärmen ska aldrig vara svart bara för att källan råkar vara onåbar vid uppstart —
+# menyn från igår är oändligt mycket bättre än ingen meny. Poll-loopen hämtar nytt
+# så fort källan svarar igen. (2026-07-28: exakt detta släckte vagg1 under ett
+# nätavbrott hemma — burken startade om, cachen fanns, men visades aldrig.)
+if [ -s "$IMG" ]; then
+  logger -t menyskarm "startad ($NAME), visar cachad bild medan källan söks"
+  show "$IMG"
+else
+  # Ingen cache — då måste vi vänta på en första bild.
+  # Hämta till .new så ett misslyckat försök aldrig kan skada en befintlig cache.
+  until curl -fsS -o "$IMG.new" "$URL" && [ -s "$IMG.new" ]; do
+    rm -f "$IMG.new"; logger -t menyskarm "väntar på nät/bild…"; sleep 10
+  done
+  mv "$IMG.new" "$IMG"
+  logger -t menyskarm "startad ($NAME), visar första bilden"
+  show "$IMG"
+fi
 
 # Poll-loop: -z = If-Modified-Since (lokala filens mtime) → 304 om oförändrad.
 while true; do
