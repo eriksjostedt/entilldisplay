@@ -85,8 +85,47 @@ else
   echo "   redan installerat ($(tailscale ip -4 2>/dev/null | head -1 || echo 'ej uppkopplad'))"
 fi
 
+# ── ÅTKOMST — LAG för varje skärm, inga undantag (se ATKOMST.md) ──────────────
+# Skärmarna är ETT enhetligt system. Varje burk ska nås likadant, från både Macen
+# och .52: användare `eriks` (sudo) + `root`, båda över Tailscale-SSH.
+# Bakgrund: krog-dorr byggdes utan detta och blev en snöflinga som kostade en
+# halv kväll att ta sig in på. Det ska inte kunna hända igen.
+
+echo "==> åtkomst: användare eriks + nycklar"
+if ! id eriks >/dev/null 2>&1; then
+  useradd -m -s /bin/bash -G sudo eriks
+  echo "   användare eriks skapad"
+fi
+echo 'eriks ALL=(ALL) NOPASSWD:ALL' > /etc/sudoers.d/eriks
+chmod 440 /etc/sudoers.d/eriks
+install -d -m 700 -o eriks -g eriks /home/eriks/.ssh
+# Nycklar: Eriks MacBook + entill-intern (.52). Båda MÅSTE finnas — annars går burken
+# bara att nå från ett håll, och den dagen det hållet strular är den oåtkomlig.
+cat > /home/eriks/.ssh/authorized_keys <<'NYCKLAR'
+ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIIbvxaf+eWyGygpuP3Jq8DZ6jM5c/sZrd8UT3nXgoo+z eriksjostedt@MacBook-Pro.local
+NYCKLAR
+if [ -n "${EXTRA_KEY:-}" ]; then echo "$EXTRA_KEY" >> /home/eriks/.ssh/authorized_keys; fi
+chmod 600 /home/eriks/.ssh/authorized_keys
+chown -R eriks:eriks /home/eriks/.ssh
+
+echo "==> åtkomst: Tailscale-SSH"
+if tailscale status >/dev/null 2>&1; then
+  tailscale set --ssh --accept-risk=lose-ssh 2>/dev/null \
+    && echo "   Tailscale-SSH på" \
+    || echo "   VARNING: kunde inte sätta --ssh — kör manuellt: sudo tailscale set --ssh"
+else
+  echo "   VARNING: tailscale ej uppkopplad än — kör efter 'tailscale up': sudo tailscale set --ssh"
+fi
+
+echo "==> åtkomst: tidszon (svensk tid, se TIDSZON.md)"
+timedatectl set-timezone Europe/Stockholm 2>/dev/null || true
+timedatectl set-ntp true 2>/dev/null || true
+
 echo
 echo "==> KLART — $NAME"
 systemctl --no-pager --lines=0 status entilldisplay.service 2>/dev/null | head -3 || true
 echo "   media : $MEDIA_BASE/$NAME.png"
 echo "   loggar: journalctl -u entilldisplay -f   (taggen 'menyskarm')"
+echo "   logga in: ssh eriks@$(hostname)      (reserv: ssh root@$(hostname))"
+echo "   VERIFIERA från BÅDE Macen och .52 innan du lämnar burken — och lägg till"
+echo "   den i NODER-listan i bin/skarm-access.sh, annars vaktas den inte."

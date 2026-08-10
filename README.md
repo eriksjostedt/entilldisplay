@@ -1,5 +1,18 @@
 # entilldisplay
 
+## 🔑 Logga in på en skärm
+
+```bash
+ssh eriks@krog-vagg5     # eller krog-vagg1, krog-dorr — samma på ALLA burkar
+ssh root@krog-dorr       # reservväg
+```
+
+Fungerar från både Macen och .52. Lösenord fungerar aldrig (bara nyckel/Tailscale-SSH).
+**Skärmarna är ett enhetligt system** — avviker en burk är det ett fel att åtgärda.
+Full beskrivning, fallgropar och felsökning: **[ATKOMST.md](ATKOMST.md)**.
+Vakten `bin/skarm-access.sh` larmar när en inloggningsväg slutar fungera.
+
+
 Självhostat digital signage för Raspberry Pi — ersätter pisignage som mellanhand.
 Skärmarna är "dumma": hjärnan (vilken meny/bild som ska visas, schemat) sitter på
 **entill-intern (.52)**; varje skärm pollar sitt innehåll och visar det fullskärm.
