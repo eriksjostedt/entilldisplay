@@ -68,7 +68,22 @@ Saknas `schema.json`, eller pekar beslutet på en bild som inte finns, säger
 `valj.py` ifrån (exit 1) och playern kör vidare på det gamla sättet. Att visa
 fel bild vore värre än att behålla den som redan står på skärmen.
 
-## 🔴 Vad servern ska leverera (ej byggt än — planerat helgen 29–30 aug 2026)
+## Pull är primärt, push är komplement
+
+**En push når bara en PÅSLAGEN skärm.** Krogen stänger av apparaterna vid
+stängning; vagg1 var avstängd 2026-08-25 och missade innehållet helt, hur många
+gånger man än pushade. Hämtar burken själv fixar den sig när den vaknar — det
+är samma princip som att den äger sitt schema.
+
+- **Pull (normalläget):** burken hämtar schema + lager från `<BASE>` var 5:e
+  minut. Fungerar även för en skärm som varit avstängd i en vecka.
+- **Push (`skyltpush.sh`):** omedelbar effekt när man står och väntar på
+  resultatet, och **reservväg när Knäppa är nere**. Rapporterar per skärm om
+  burken valde rätt bild och att mpv kör den. Den kontrollerar om pull-källan
+  svarar: gör den det är en avstängd skärm ofarlig, annars sägs det rakt ut att
+  skärmen missar innehållet.
+
+## 🟡 Serversidan — KODAD, väntar driftsättning (.52/.56 nere sedan 2026-08-25)
 
 Burken hämtar, med conditional GET (`If-Modified-Since`), var femte minut:
 
@@ -82,13 +97,25 @@ Burken hämtar, med conditional GET (`If-Modified-Since`), var femte minut:
 
 där `BASE` är `https://sundbrokrog.se/skarm` (`MENY_BASE`).
 
-**.56** ska publicera den strukturen. Behåll den gamla
-`<BASE>/<skärm>.png` — burkar utan lager faller tillbaka på den.
+✅ **Koden finns** (repo `entillmeny`, pushad 2026-08-26):
+`publish-skarm.sh --med-lager` kör `bygg-lager.js --ut=<webbrot>` för vagg5 och
+dorr, och rsync:ar hela `skarm/`-trädet till .56. Anropas från `distribute.js`,
+dvs vid publicering — **aldrig i cron**, eftersom det renderar åtta 4K-PNG genom
+Chromium. Cron-körningen (utan flagga) speglar bara.
 
-**.52** ska sluta *bestämma* åt skärmen. `vagg5-scheduler.js` byter roll: i
-stället för att välja bild och swappa den, ska den *generera lagret*
-(`bygg-lager.js` i repot `entillmeny` gör redan exakt detta) och skicka det
-till .56. Tidsbeslutet ägs av burken.
+Verifierat att den producerade strukturen matchar `SCHEMA_URL`/`LAGER_URL` i
+`player.sh`.
+
+**Kvar att göra när .52/.56 är uppe:**
+1. `git pull` på .52 så den får `bygg-lager.js` + nya `publish-skarm.sh`.
+2. Kör `publish-skarm.sh --med-lager` en gång och kontrollera att
+   `https://sundbrokrog.se/skarm/vagg5/schema.json` svarar 200 med korrekt
+   `Last-Modified` (annars faller conditional GET och varje poll drar hela
+   bildmängden).
+3. `vagg5-scheduler.js` / `dorr-scheduler.js` byter roll: sluta *bestämma* åt
+   skärmen, bara *generera lagret*. Tidsbeslutet ägs av burken.
+4. Den gamla `<BASE>/<skärm>.png` **behålls** — burkar utan lager faller
+   tillbaka på den. Ta bort först när alla skärmar är omställda.
 
 Filerna måste ha korrekt `Last-Modified`, annars fungerar inte den
 villkorade hämtningen och varje poll drar hela bildmängden.
