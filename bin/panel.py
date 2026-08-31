@@ -402,7 +402,7 @@ button.av{background:#a8322b}button.av:hover{background:#8b2822}
 <div class="topp"><h1>%(skarm)s</h1><div class="tid">%(tid)s</div></div>
 <div class="inne">
 %(banner)s
-<div class="kort"><h2>Visas just nu</h2>
+<div class="kort"><h2>%(bildrubrik)s</h2>
   <div class="bildruta">
     <img class="forhands" src="/nu.png?t=%(cache)s" alt="Det som visas nu">
     %(kryss)s
@@ -535,6 +535,9 @@ class Panel(BaseHTTPRequestHandler):
         return (SIDA % {
             "skarm": s["skarm"], "tid": s["tid"], "banner": banner,
             "nu_namn": s["nu_namn"] or "—", "syns": syns, "nasta": nasta,
+            # Star skarmen svart far rubriken INTE pasta att nagot visas.
+            # Bilden nedan ar da vad som SKULLE ha visats, inget annat.
+            "bildrubrik": ("Visas just nu" if s["syns"] else "Skulle ha visats"),
             "cache": datetime.now().strftime("%H%M%S"),
             "kryss": ('<form class="kryss" method="post" action="/avbryt">'
                       '<button type="submit" title="Ta bort den manuella bilden">&#10005;</button>'
