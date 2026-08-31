@@ -147,6 +147,90 @@ def besluta(schema, nu):
     return "fallback", "fallback.png"
 
 
+# ─────────────────────────────────────────────────────────────────────────
+# MANUELL ÅSIDOSÄTTNING ("jag vill visa just den här bilden ikväll")
+# ─────────────────────────────────────────────────────────────────────────
+# Erik 2026-08-31: "Det ska bara användas i undantagsfall. Men det är en
+# trygghet." Laddar man upp en bild via burkens egen panel ska den visas
+# omedelbart och gå före allt annat — men den får ALDRIG bli permanent.
+#
+# Den dör av två skäl, och båda måste finnas:
+#   1. Tiden går ut (man väljer hur länge vid uppladdningen).
+#   2. NYTT INNEHÅLL KOMMER. Skickar macen eller servern nyare bilder är det
+#      de som gäller — annars skulle en glömd kvällsbild kunna blockera
+#      Dagens Lunch i veckor utan att någon förstod varför.
+OVERRIDE_JSON = STATE / "override.json"
+OVERRIDE_PNG = STATE / "override.png"
+
+
+def _nyaste_innehall():
+    """Tidsstämpel för det senaste som servern/macen skickat hit."""
+    senast = 0.0
+    for kandidat in list(LAGER.glob("*.png")) + [SCHEMA]:
+        try:
+            senast = max(senast, kandidat.stat().st_mtime)
+        except OSError:
+            pass
+    return senast
+
+
+def override_status(nu):
+    """(bild, info) om en manuell bild gäller — annars (None, skäl)."""
+    data = las(OVERRIDE_JSON)
+    if not isinstance(data, dict):
+        return None, "ingen"
+    if not OVERRIDE_PNG.is_file() or OVERRIDE_PNG.stat().st_size == 0:
+        return None, "bildfil saknas"
+
+    skapad = data.get("skapad") or ""
+    till = data.get("till")
+
+    if till:
+        try:
+            if nu >= datetime.strptime(till, "%Y-%m-%d %H:%M"):
+                return None, f"tiden gick ut {till}"
+        except ValueError:
+            pass
+
+    # Nyare innehåll utifrån vinner alltid.
+    try:
+        skapad_ts = datetime.strptime(skapad, "%Y-%m-%d %H:%M:%S").timestamp()
+        if _nyaste_innehall() > skapad_ts + 1:
+            return None, "nyare innehåll har kommit från servern"
+    except (ValueError, TypeError):
+        pass
+
+    return OVERRIDE_PNG, data.get("text") or "manuell bild"
+
+
+# ─────────────────────────────────────────────────────────────────────────
+def beslut_vid(schema, nu):
+    """Vilket läge gäller vid tidpunkten nu? Samma väg som main() tar."""
+    if isinstance(schema.get("regler"), list):
+        return besluta_regler(schema["regler"], nu)
+    return besluta(schema, nu)
+
+
+def nasta_byte(schema, nu, timmar=48):
+    """(läge, bild, när) för nästa gång bilden ändras — eller (None,None,None).
+
+    Simulerar framåt minut för minut i stället för att räkna ut brytpunkter
+    analytiskt. Det är 2880 varv ren logik, alltså gratis, och blir rätt
+    OAVSETT hur reglerna ser ut — även när nya regeltyper tillkommer. En
+    analytisk lösning hade behövt uppdateras varje gång schemat växer.
+    """
+    from datetime import timedelta
+
+    nu_lage, _ = beslut_vid(schema, nu)
+    peka = nu.replace(second=0, microsecond=0)
+    for steg in range(1, timmar * 60 + 1):
+        t = peka + timedelta(minutes=steg)
+        lage, bild = beslut_vid(schema, t)
+        if lage != nu_lage:
+            return lage, bild, t
+    return None, None, None
+
+
 def main():
     schema = las(SCHEMA)
     if not isinstance(schema, dict):
@@ -165,14 +249,27 @@ def main():
     # Nytt format (regellista) om det finns, annars det ursprungliga vagg5-formatet.
     # Båda vägarna behålls med flit: vagg5 gick i drift på det gamla formatet och
     # ska inte tvingas byta bara för att dorr kom till.
-    if isinstance(schema.get("regler"), list):
-        lage, bild = besluta_regler(schema["regler"], nu)
-    else:
-        lage, bild = besluta(schema, nu)
+    # Manuell bild går före allt — men bara så länge den lever.
+    manuell, manuell_info = override_status(nu)
+    if manuell:
+        print(manuell)
+        if "--verbose" in sys.argv:
+            print(f"läge: manuell ({manuell_info})", file=sys.stderr)
+        return 0
+
+    lage, bild = beslut_vid(schema, nu)
 
     if not bild:
         print("ingen regel matchade", file=sys.stderr)
         return 1
+
+    if "--nasta" in sys.argv:
+        n_lage, n_bild, n_tid = nasta_byte(schema, nu)
+        if n_lage:
+            print(f"{n_lage}\t{n_bild}\t{n_tid:%Y-%m-%d %H:%M}")
+        else:
+            print("oforandrat\t\t")
+        return 0
 
     fil = LAGER / bild
 

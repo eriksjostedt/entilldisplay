@@ -39,7 +39,8 @@ export DEBIAN_FRONTEND=noninteractive
 # Tålig apt: retry vid övergående nät-/spegelhicka i st f att avbryta hela bootstrap.
 apt_retry() { local i; for i in 1 2 3 4 5; do "$@" && return 0; echo "   apt-försök $i misslyckades — väntar 10s"; sleep 10; done; return 1; }
 apt_retry apt-get update -q
-apt_retry apt-get install -y --no-install-recommends mpv curl network-manager
+# imagemagick: panelen gor om HEIC/JPEG fran telefonen till PNG.
+apt_retry apt-get install -y --no-install-recommends mpv curl network-manager imagemagick
 
 echo "==> ethernet-fallback (kabel = alltid nät, högsta prioritet)"
 if command -v nmcli >/dev/null 2>&1; then
@@ -80,8 +81,13 @@ sed -i "s#^User=.*#User=$RUN_USER#"                          /etc/systemd/system
 sed -i "s#^Environment=POLL=.*#Environment=POLL=$POLL#"      /etc/systemd/system/entilldisplay.service
 grep -q "MENY_BASE=" /etc/systemd/system/entilldisplay.service \
   || sed -i "/^Environment=POLL=/a Environment=MENY_BASE=$MEDIA_BASE" /etc/systemd/system/entilldisplay.service
+fetch "systemd/entilldisplay-panel.service" /etc/systemd/system/entilldisplay-panel.service
+sed -i "s#^Environment=SKARM_NAMN=.*#Environment=SKARM_NAMN=$NAME#" /etc/systemd/system/entilldisplay-panel.service
+sed -i "s#^User=.*#User=$RUN_USER#"                                  /etc/systemd/system/entilldisplay-panel.service
+
 systemctl daemon-reload
 systemctl enable --now entilldisplay.service
+systemctl enable --now entilldisplay-panel.service
 
 echo "==> tailscale"
 if ! command -v tailscale >/dev/null 2>&1; then
@@ -116,6 +122,14 @@ chown -R eriks:eriks /home/eriks/.ssh
 
 echo "==> åtkomst: Tailscale-SSH"
 if tailscale status >/dev/null 2>&1; then
+  # Panelen nabar pa tailnet-namnet: https://<burk>.<tailnet>.ts.net
+  # Ingen port att komma ihag, riktigt cert, och inget oppnas mot LAN.
+  # ⚠️ FALLA: serve-konfigurationen sitter pa NODNAMNET. Doper man om noden
+  # slutar den fungera tyst (se reference_node_rename_broke_serve).
+  tailscale serve --bg --https=443 http://127.0.0.1:8099 2>/dev/null \
+    || tailscale serve https / http://127.0.0.1:8099 2>/dev/null \
+    || echo "   VARNING: kunde inte satta upp tailscale serve for panelen"
+
   tailscale set --ssh --accept-risk=lose-ssh 2>/dev/null \
     && echo "   Tailscale-SSH på" \
     || echo "   VARNING: kunde inte sätta --ssh — kör manuellt: sudo tailscale set --ssh"

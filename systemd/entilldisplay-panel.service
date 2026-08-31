@@ -1,0 +1,24 @@
+[Unit]
+# Burkens egen sida: vad visas, vad kommer härnäst, och ladda upp något annat.
+# Egen unit med flit — panelen får ALDRIG kunna störa spelaren. Kraschar den
+# fortsätter skärmen visa sin bild som om inget hänt.
+Description=entilldisplay panel — burkens egen sida
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=eriks
+Environment=SKARM_NAMN=vagg5
+Environment=PANEL_PORT=8099
+# Lyssnar bara på 127.0.0.1. Åtkomsten utifrån går via tailscale serve, så
+# ingenting öppnas mot LAN eller internet.
+ExecStart=/usr/bin/python3 /opt/entilldisplay/bin/panel.py
+Restart=always
+RestartSec=10
+# Panelen skriver bara i burkens egen state-katalog.
+NoNewPrivileges=yes
+PrivateTmp=yes
+
+[Install]
+WantedBy=multi-user.target
