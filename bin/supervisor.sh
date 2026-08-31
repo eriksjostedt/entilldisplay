@@ -12,17 +12,52 @@ set -u
 NAME="${1:-vagg5}"
 BASE_RAW="${REPO_RAW:-https://raw.githubusercontent.com/eriksjostedt/entilldisplay/main}"
 PLAYER_URL="$BASE_RAW/bin/player.sh"
+VALJ_URL="$BASE_RAW/bin/valj.py"
 STATE="${STATE_DIR:-$HOME/.entilldisplay}"
 VERD="$STATE/versions"
 CUR="$VERD/player-current.sh"      # symlänk → aktiv version
 GOOD="$VERD/player-good.sh"        # senast kända fungerande
 POLL_UPDATE="${POLL_UPDATE:-300}"  # OTA-koll var 5:e min
+OTA_FRAN="${OTA_FRAN:-14}"         # uppdateringar tas i bruk tidigast kl
+OTA_TILL="${OTA_TILL:-23}"         # ...och senast kl
 GOOD_AFTER="${GOOD_AFTER:-300}"    # stabil i 5 min → good
 MIN_RUN="${MIN_RUN:-60}"           # kortare körning än så = krasch
 MAX_FAILS="${MAX_FAILS:-3}"        # så många snabba krascher → rollback
 mkdir -p "$VERD"
 
 log(){ logger -t entilldisplay-sup "$*" 2>/dev/null; echo "[sup] $*"; }
+
+# Att ta en ny version i bruk startar om spelaren - en synlig blink pa en skarm
+# som gaster tittar pa. Det far inte hanta mitt i lunchserveringen.
+# Erik 2026-08-31: "Garna nar de ar igang, efter lunchtid."
+# Utanfor fonstret hamtar vi ingenting alls; forsta cykeln efter kl 14 tar det.
+# Burkarna kor Europe/Stockholm, sa klockan har ar lokal tid (till skillnad fran
+# servrarna som kor UTC - jfr reference_tidszon_svtid).
+ota_tillaten(){
+  local h; h=$(date +%-H)
+  [ "$h" -ge "$OTA_FRAN" ] && [ "$h" -lt "$OTA_TILL" ]
+}
+
+# valj.py ar hjarnan som avgor VILKEN meny som visas. Den kom tidigare BARA med
+# lager-pushen (skyltpush packar den i tarren) - vilket betydde tva saker:
+#   1. En uppdatering i git nadde aldrig en burk av sig sjalv.
+#   2. Ett nybrant kort saknade den helt tills nagon rakade pusha lagret, och
+#      stod till dess kvar i gammalt "dumt" lage.
+# Nu foljer den samma OTA-vag som player.sh: hamtas fran git, syntaxkollas,
+# och byts bara om den faktiskt skiljer sig. En trasig valj.py far aldrig
+# installeras - da ar det battre att kora vidare pa den gamla.
+hamta_valj(){
+  local tmp; tmp=$(mktemp)
+  if curl -fsSL "$VALJ_URL" -o "$tmp" 2>/dev/null && [ -s "$tmp" ] \
+     && python3 -m py_compile "$tmp" 2>/dev/null; then
+    if ! cmp -s "$tmp" "$STATE/valj.py" 2>/dev/null; then
+      cp "$tmp" "$STATE/valj.py" && chmod +x "$STATE/valj.py" \
+        && log "valj.py uppdaterad via OTA"
+    fi
+  fi
+  rm -f "$tmp" "${tmp}c" 2>/dev/null
+  rm -rf "$(dirname "$tmp")/__pycache__" 2>/dev/null
+}
 
 install_player(){  # $1 = källfil → ny current (versionerad + symlänk)
   local src="$1" ts; ts=$(date +%s)
@@ -67,7 +102,9 @@ while true; do
     # OTA
     if [ $((now-last_update)) -ge "$POLL_UPDATE" ]; then
       last_update=$now
-      if fetch_update; then
+      if ota_tillaten; then
+        hamta_valj
+        if fetch_update; then
         log "ny player → startar om"
         kill "$pid" 2>/dev/null
         # Eskalera. En player kan sitta fast i en lång curl-timeout (~135 s) och
@@ -79,6 +116,7 @@ while true; do
           log "player svarade ej på TERM efter 20 s — SIGKILL"
           pkill -f "mpv .*$STATE/" 2>/dev/null
           kill -9 "$pid" 2>/dev/null
+        fi
         fi
       fi
     fi

@@ -59,13 +59,19 @@ fetch() { # $1=relativ sökväg  $2=målfil
   curl -fsSL "$REPO_RAW/$1" -o "$2" && [ -s "$2" ]
 }
 
-echo "==> installera supervisor + player → $PREFIX"
+echo "==> installera supervisor + player + valj → $PREFIX"
 install -d "$PREFIX/bin"
 for f in supervisor.sh player.sh; do
   fetch "bin/$f" "$PREFIX/bin/$f"
   chmod +x "$PREFIX/bin/$f"
   bash -n "$PREFIX/bin/$f"   # syntaxkoll innan vi kör
 done
+# valj.py maste med redan har. Utan den star ett nybrant kort kvar i gammalt
+# "dumt" lage tills nagon rakar pusha lagret - och nya skarmar ska fa SAMMA
+# version som de befintliga, inte en aldre. (Erik 2026-08-31.)
+fetch "bin/valj.py" "$PREFIX/bin/valj.py"
+chmod +x "$PREFIX/bin/valj.py"
+python3 -m py_compile "$PREFIX/bin/valj.py" && rm -rf "$PREFIX/bin/__pycache__"
 
 echo "==> systemd-tjänst (skärm=$NAME, media=$MEDIA_BASE, poll=${POLL}s, user=$RUN_USER)"
 fetch "systemd/entilldisplay.service" /etc/systemd/system/entilldisplay.service
