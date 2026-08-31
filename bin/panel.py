@@ -37,6 +37,7 @@ LAGER = STATE / "lager"
 OVERRIDE_JSON = STATE / "override.json"
 OVERRIDE_PNG = STATE / "override.png"
 PORT = int(os.environ.get("PANEL_PORT", "8099"))
+_avvik_sedan = None
 MAX_UPP = 40 * 1024 * 1024  # 40 MB räcker för en 4K-PNG med marginal
 
 
@@ -52,6 +53,34 @@ def kor_valj(*extra):
         return None
 
 
+TILLGANGAR = Path(__file__).resolve().parent.parent / "assets"
+
+
+def faktisk_bild():
+    """Vad mpv FAKTISKT visar just nu.
+
+    Erik 2026-08-31: "Den där bilden som visar vad som visas. Den ska alltid
+    vara hämtad ifrån vad som faktiskt visas på burken. Inte vad programmet
+    hoppas ska visas eller tror."
+
+    Samma princip som kvittot: fråga verkligheten. valj.py säger vad som BORDE
+    visas - står mpv kvar på något annat (gammal bild, misslyckat byte) ska
+    sidan visa det som verkligen hänger på väggen, och säga att de skiljer sig.
+    """
+    try:
+        r = subprocess.run(["pgrep", "-af", "mpv"], capture_output=True,
+                           text=True, timeout=5)
+        for rad in r.stdout.splitlines():
+            m = re.search(r"(/\S+\.(?:png|jpg|jpeg))", rad)
+            if m:
+                f = Path(m.group(1))
+                if f.is_file():
+                    return f
+    except Exception:
+        pass
+    return None
+
+
 def las_override():
     try:
         return json.loads(OVERRIDE_JSON.read_text(encoding="utf-8"))
@@ -60,10 +89,28 @@ def las_override():
 
 
 def status():
-    nu_fil = kor_valj()
+    # VERKLIGHETEN först. bor_visas är bara avsikten.
+    visas = faktisk_bild()
+    bor = kor_valj()
     nasta = kor_valj("--nasta")
     ov = las_override()
-    manuell = bool(nu_fil and Path(nu_fil).name == "override.png")
+    nu_fil = str(visas) if visas else bor
+    # "manuell" hangs pa BESLUTET, inte pa vad mpv hunnit byta till. Laddar man
+    # upp en bild ska avbryt-krysset finnas direkt - inte forst nar spelaren
+    # kommit ikapp en minut senare.
+    manuell = bool(bor and Path(bor).name == "override.png")
+    avviker = bool(visas and bor and str(visas) != bor)
+
+    # Skarmen byter inte pa millisekunden: playern pollar, sa en avvikelse ar
+    # HELT NORMAL i en minut efter ett byte. Larmar vi direkt far Erik en rod
+    # ruta varje gang han laddar upp nagot - ett falsklarm som lar en att
+    # ignorera rutan, och da ar den vardelos nar den betyder nagot.
+    global _avvik_sedan
+    if avviker:
+        _avvik_sedan = _avvik_sedan or datetime.now()
+    else:
+        _avvik_sedan = None
+    fastnat = bool(_avvik_sedan and (datetime.now() - _avvik_sedan).total_seconds() > 120)
 
     n_lage = n_bild = n_tid = None
     if nasta and "\t" in nasta:
@@ -71,15 +118,11 @@ def status():
         if bitar[0] and bitar[0] != "oforandrat":
             n_lage, n_bild, n_tid = (bitar + ["", "", ""])[:3]
 
-    # Kör mpv med rätt fil? Det är skillnaden mellan "borde visas" och "visas".
-    syns = False
-    try:
-        r = subprocess.run(["pgrep", "-a", "mpv"], capture_output=True, text=True, timeout=5)
-        syns = bool(nu_fil) and nu_fil in r.stdout
-    except Exception:
-        pass
-
     return {
+        "bor_visas": Path(bor).name if bor else None,
+        "avviker": avviker,
+        "byter": avviker and not fastnat,
+        "fastnat": fastnat,
         "skarm": NAMN,
         "nu_fil": nu_fil,
         "nu_namn": Path(nu_fil).name if nu_fil else None,
@@ -88,7 +131,7 @@ def status():
         "nasta_lage": n_lage,
         "nasta_bild": n_bild,
         "nasta_tid": n_tid,
-        "syns": syns,
+        "syns": bool(visas),
         "tid": datetime.now().strftime("%Y-%m-%d %H:%M"),
         "lager": sorted(p.name for p in LAGER.glob("*.png")) if LAGER.is_dir() else [],
     }
@@ -167,8 +210,8 @@ def till_png(data, typ, mal):
 # texten i stället, så ritar burken bilden. Då är en rättelse tre tryck: texten
 # ligger kvar ifylld, man ändrar ett tecken och skickar om.
 HUS_BAKGRUND = "#1b6891"
-HUS_TEXT = "#fdfaf3"
-HUS_UNDER = "#e8d9b0"
+HUS_TEXT = "#f5efe2"
+HUS_UNDER = "#d8c9a8"
 
 
 def _magick():
@@ -179,6 +222,12 @@ def _magick():
         except (FileNotFoundError, subprocess.TimeoutExpired):
             continue
     return None
+
+
+def _husfont(fil):
+    """Husets typsnitt om det följt med, annars systemets."""
+    egen = TILLGANGAR / fil
+    return str(egen) if egen.is_file() else None
 
 
 def _typsnitt():
@@ -193,6 +242,9 @@ def _typsnitt():
         "/System/Library/Fonts/Supplemental/Arial Bold.ttf",       # macOS
         "/System/Library/Fonts/Helvetica.ttc",
     )
+    egen = _husfont("SairaCondensed-Bold.ttf")
+    if egen:
+        return egen
     for f in kandidater:
         if Path(f).is_file():
             return f
@@ -208,7 +260,15 @@ def gor_textbild(rubrik, underrad, mal):
     if not typsnitt:
         return False, "inget typsnitt hittades (installera fonts-dejavu-core)"
     tmp = mal.with_suffix(".ny")
-    kmd = [k, "-size", "3840x2160", f"canvas:{HUS_BAKGRUND}"]
+    # Husets svarta trä om bakgrunden följt med, annars enfärgat. Bakgrunden är
+    # hämtad ur den riktiga menymallen (DagensLunch.svg), inte gissad - då blir
+    # den manuella bilden en i mangden pa vaggen i stallet for en frammande.
+    bakgrund = TILLGANGAR / "bakgrund.png"
+    if bakgrund.is_file():
+        kmd = [k, str(bakgrund), "-resize", "3840x2160^",
+               "-gravity", "center", "-extent", "3840x2160"]
+    else:
+        kmd = [k, "-size", "3840x2160", f"canvas:{HUS_BAKGRUND}"]
     # caption: bryter raderna själv och krymper tills texten får plats, sa
     # en lang mening blir aldrig avklippt.
     kmd += ["(", "-background", "none", "-fill", HUS_TEXT, "-font", typsnitt,
@@ -219,7 +279,7 @@ def gor_textbild(rubrik, underrad, mal):
         kmd += ["(", "-background", "none", "-fill", HUS_UNDER, "-font", typsnitt,
                 "-size", "2900x420", "-gravity", "center", f"caption:{underrad}", ")",
                 "-gravity", "center", "-geometry", "+0+560", "-composite"]
-    kmd += [f"png:{tmp}"]
+    kmd += ["-flatten", f"png:{tmp}"]
     try:
         r = subprocess.run(kmd, capture_output=True, timeout=120)
     except (FileNotFoundError, subprocess.TimeoutExpired):
@@ -294,6 +354,16 @@ body{margin:0;font:16px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,s
   letter-spacing:.09em;color:#8a8377}
 img.forhands{width:100%%;border-radius:10px;display:block;background:#eee;
   aspect-ratio:16/9;object-fit:contain}
+.bildruta{position:relative}
+/* Kryss for att slanga den manuella bilden direkt - ett tryck, ingen scroll. */
+.kryss{position:absolute;top:.5rem;right:.5rem;margin:0}
+.kryss button{width:44px;height:44px;padding:0;margin:0;border-radius:50%%;
+  background:rgba(168,50,43,.92);color:#fff;font-size:1.35rem;line-height:1;
+  font-weight:400;box-shadow:0 2px 8px rgba(0,0,0,.35);cursor:pointer}
+.kryss button:hover{background:#8b2822}
+.avvik{background:#faeeed;border-left:4px solid #a8322b;border-radius:10px;
+  padding:.8rem 1rem;margin-bottom:1rem}
+.avvik b{color:#a8322b}
 .rad{display:flex;justify-content:space-between;gap:.6rem;padding:.42rem 0;
   border-bottom:1px solid #f0ece2}
 .rad:last-child{border-bottom:none}
@@ -317,9 +387,12 @@ button.av{background:#a8322b}button.av:hover{background:#8b2822}
 <div class="inne">
 %(banner)s
 <div class="kort"><h2>Visas just nu</h2>
-  <img class="forhands" src="/nu.png?t=%(cache)s" alt="Det som visas nu">
+  <div class="bildruta">
+    <img class="forhands" src="/nu.png?t=%(cache)s" alt="Det som visas nu">
+    %(kryss)s
+  </div>
   <div class="rad"><span class="mrk">Bild</span><b>%(nu_namn)s</b></div>
-  <div class="rad"><span class="mrk">På skärmen</span>%(syns)s</div>
+  <div class="rad"><span class="mrk">Syns den?</span>%(syns)s</div>
 </div>
 <div class="kort"><h2>Härnäst</h2>%(nasta)s</div>
 <div class="kort"><h2>Skriv en text</h2>
@@ -415,6 +488,21 @@ class Panel(BaseHTTPRequestHandler):
         else:
             banner = ""
 
+        # Visar skarmen nagot ANNAT an vad schemat sager? Da ar det viktigare
+        # an allt annat pa sidan.
+        if s["fastnat"]:
+            banner += ('<div class="avvik"><b>Skärmen har fastnat</b><br>'
+                       f'på väggen: {s["nu_namn"]} — enligt schemat: {s["bor_visas"]}<br>'
+                       '<span class="mrk">Har stått så i över två minuter.</span></div>')
+        elif s["byter"]:
+            banner += ('<div class="banner"><b>Byter strax</b><br>'
+                       f'på väggen just nu: {s["nu_namn"]} → snart: {s["bor_visas"]}'
+                       '<br><span class="mrk">Spelaren hämtar nästa bild inom en minut.</span></div>')
+        if not s["syns"]:
+            banner += ('<div class="avvik"><b>Skärmen är svart</b><br>'
+                       'Ingen bild visas på väggen just nu. Vanligaste orsaken är att '
+                       'HDMI-kabeln glappar eller att skärmen är avstängd.</div>')
+
         if s["nasta_tid"]:
             nasta = (f'<div class="rad"><span class="mrk">Byter till</span><b>{s["nasta_bild"]}</b></div>'
                      f'<div class="rad"><span class="mrk">Klockan</span><b>{s["nasta_tid"]}</b></div>'
@@ -426,12 +514,15 @@ class Panel(BaseHTTPRequestHandler):
             nasta = ('<div class="rad"><span class="mrk">Oförändrat</span>'
                      '<span>de närmaste 48 timmarna</span></div>')
 
-        syns = ('<span class="gron">visas ✓</span>' if s["syns"]
-                else '<span class="rod">mpv kör den inte</span>')
+        syns = ('<span class="gron">syns på väggen ✓</span>' if s["syns"]
+                else '<span class="rod">skärmen är svart</span>')
         return (SIDA % {
             "skarm": s["skarm"], "tid": s["tid"], "banner": banner,
             "nu_namn": s["nu_namn"] or "—", "syns": syns, "nasta": nasta,
             "cache": datetime.now().strftime("%H%M%S"),
+            "kryss": ('<form class="kryss" method="post" action="/avbryt">'
+                      '<button type="submit" title="Ta bort den manuella bilden">&#10005;</button>'
+                      '</form>') if s["manuell"] else "",
             "rubrik": _fly((s["override"] or {}).get("rubrik", "")),
             "underrad": _fly((s["override"] or {}).get("underrad", "")),
             "valt": val_lista((s["override"] or {}).get("hurlange", "tillsvidare"),

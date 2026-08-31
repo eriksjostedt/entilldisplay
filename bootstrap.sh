@@ -80,6 +80,14 @@ fetch "bin/panel.py" "$PREFIX/bin/panel.py"
 chmod +x "$PREFIX/bin/panel.py"
 python3 -m py_compile "$PREFIX/bin/panel.py" && rm -rf "$PREFIX/bin/__pycache__"
 
+# Panelens tillgangar: husets svarta tra + Saira Condensed. Utan dem kan burken
+# inte rita textbilder - och en panel som inte kan det ar halv. Bakgrunden ar
+# hamtad ur den riktiga menymallen, inte gissad.
+install -d "$PREFIX/assets"
+for a in bakgrund.png SairaCondensed-Bold.ttf SairaCondensed-Medium.ttf; do
+  fetch "assets/$a" "$PREFIX/assets/$a" || echo "   VARNING: assets/$a saknas - textbilder blir enfargade"
+done
+
 echo "==> systemd-tjänst (skärm=$NAME, media=$MEDIA_BASE, poll=${POLL}s, user=$RUN_USER)"
 fetch "systemd/entilldisplay.service" /etc/systemd/system/entilldisplay.service
 sed -i "s#supervisor.sh vagg5#supervisor.sh $NAME#"         /etc/systemd/system/entilldisplay.service
