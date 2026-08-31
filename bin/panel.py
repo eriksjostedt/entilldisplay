@@ -156,6 +156,84 @@ def till_png(data, typ, mal):
     return False, f"kan inte omvandla {typ} — installera imagemagick på burken"
 
 
+# ─────────────────────────────────────────────────────────────────────────
+# TEXTBILD: skriv i stället för att ladda upp
+# ─────────────────────────────────────────────────────────────────────────
+# Erik 2026-08-31: "när jag är 50 mil bort och kocken säger att texten är för
+# liten, eller vi måste iaf få 10 kr för en burgare, eller att jag har stavat
+# hammburgare med två mm."
+#
+# Att göra om en bild i telefonen för en felstavning är onödigt krångel. Skriv
+# texten i stället, så ritar burken bilden. Då är en rättelse tre tryck: texten
+# ligger kvar ifylld, man ändrar ett tecken och skickar om.
+HUS_BAKGRUND = "#1b6891"
+HUS_TEXT = "#fdfaf3"
+HUS_UNDER = "#e8d9b0"
+
+
+def _magick():
+    for k in ("magick", "convert"):
+        try:
+            subprocess.run([k, "-version"], capture_output=True, timeout=10)
+            return k
+        except (FileNotFoundError, subprocess.TimeoutExpired):
+            continue
+    return None
+
+
+def _typsnitt():
+    """ImageMagick har inget forvalt typsnitt for caption: - det MASTE anges,
+    annars faller anropet med "unable to read font". Vi letar efter en riktig
+    fontfil i stallet for ett namn, eftersom namnlistan skiljer sig mellan
+    Debian och macOS."""
+    kandidater = (
+        "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",   # Raspberry Pi OS
+        "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+        "/usr/share/fonts/TTF/DejaVuSans-Bold.ttf",
+        "/System/Library/Fonts/Supplemental/Arial Bold.ttf",       # macOS
+        "/System/Library/Fonts/Helvetica.ttc",
+    )
+    for f in kandidater:
+        if Path(f).is_file():
+            return f
+    return None
+
+
+def gor_textbild(rubrik, underrad, mal):
+    """Ritar en 16:9-bild i husets färger. (ok, beskrivning)."""
+    k = _magick()
+    if not k:
+        return False, "imagemagick saknas på burken"
+    typsnitt = _typsnitt()
+    if not typsnitt:
+        return False, "inget typsnitt hittades (installera fonts-dejavu-core)"
+    tmp = mal.with_suffix(".ny")
+    kmd = [k, "-size", "3840x2160", f"canvas:{HUS_BAKGRUND}"]
+    # caption: bryter raderna själv och krymper tills texten får plats, sa
+    # en lang mening blir aldrig avklippt.
+    kmd += ["(", "-background", "none", "-fill", HUS_TEXT, "-font", typsnitt,
+            "-size", "3200x1100", "-gravity", "center", f"caption:{rubrik}", ")",
+            "-gravity", "center", "-geometry", "+0-140" if underrad else "+0+0",
+            "-composite"]
+    if underrad:
+        kmd += ["(", "-background", "none", "-fill", HUS_UNDER, "-font", typsnitt,
+                "-size", "2900x420", "-gravity", "center", f"caption:{underrad}", ")",
+                "-gravity", "center", "-geometry", "+0+560", "-composite"]
+    kmd += [f"png:{tmp}"]
+    try:
+        r = subprocess.run(kmd, capture_output=True, timeout=120)
+    except (FileNotFoundError, subprocess.TimeoutExpired):
+        return False, "kunde inte rita bilden"
+    if r.returncode != 0 or not tmp.is_file() or tmp.stat().st_size < 100:
+        try:
+            tmp.unlink()
+        except OSError:
+            pass
+        return False, "kunde inte rita bilden"
+    os.replace(tmp, mal)
+    return True, "ritad på skärmen"
+
+
 def dela_multipart(kropp, granslinje):
     delar = {}
     for bit in kropp.split(b"--" + granslinje):
@@ -171,7 +249,7 @@ def dela_multipart(kropp, granslinje):
     return delar
 
 
-def berakna_till(val, nu=None):
+def berakna_till(val, nu=None, befintlig=None):
     """Hur länge ska den manuella bilden gälla?
 
     Erik: "ibland är det bara 'Tills något av systemen säger något annat'.
@@ -180,6 +258,12 @@ def berakna_till(val, nu=None):
     aldrig bli glömd och permanent.
     """
     nu = nu or datetime.now()
+    # "behall" = byt bara ut bilden, ror inte schemat. Erik 2026-08-31: "jag
+    # ska inte behova ta bort den redan publicerade bilden och gora en ny bild
+    # med en ny schemalaggning". Rattar man en felstavning ska deadline ligga
+    # kvar dar den lag - den flyttar sig inte for att man bytte bild.
+    if val == "behall":
+        return befintlig
     if val == "tillsvidare":
         return None
     if val == "ikvall":
@@ -238,27 +322,53 @@ button.av{background:#a8322b}button.av:hover{background:#8b2822}
   <div class="rad"><span class="mrk">På skärmen</span>%(syns)s</div>
 </div>
 <div class="kort"><h2>Härnäst</h2>%(nasta)s</div>
-<div class="kort"><h2>Visa något annat</h2>
+<div class="kort"><h2>Skriv en text</h2>
+  <form method="post" action="/text">
+    <label>Text</label>
+    <input type="text" name="rubrik" value="%(rubrik)s" required
+           placeholder="Ikväll bjuder vi barnen på hamburgare">
+    <label>Underrad (valfritt)</label>
+    <input type="text" name="underrad" value="%(underrad)s" placeholder="t.ex. 10 kr styck">
+    <label>Hur länge?</label>
+    <select name="hurlange">%(valt)s</select>
+    <button type="submit">%(textknapp)s</button>
+  </form>
+</div>
+<div class="kort"><h2>…eller ladda upp en bild</h2>
   <form method="post" action="/upload" enctype="multipart/form-data">
     <label>Bild (PNG eller JPG, gärna 16:9)</label>
     <input type="file" name="fil" accept="image/png,image/jpeg" required>
     <label>Hur länge?</label>
-    <select name="hurlange">
-      <option value="tillsvidare">Tillsvidare — tills något av systemen säger annat</option>
-      <option value="ikvall">Resten av kvällen (till 23:59)</option>
-      <option value="timmar:2">2 timmar</option>
-      <option value="timmar:4">4 timmar</option>
-      <option value="timmar:24">Ett dygn</option>
-    </select>
+    <select name="hurlange">%(valt_upp)s</select>
     <label>Vad är det? (syns bara här)</label>
     <input type="text" name="text" placeholder="t.ex. Ikväll bjuder vi barnen på hamburgare">
-    <button type="submit">Ladda upp och visa nu</button>
+    <button type="submit">%(uppknapp)s</button>
   </form>
 </div>
 </div>
 <p class="fot">Sidan bor på skärmen själv och svarar även när servern är nere.<br>
 Uppladdad bild ersätts automatiskt när nytt innehåll kommer.</p>
 </body></html>"""
+
+
+VAL = (("tillsvidare", "Tillsvidare — tills något av systemen säger annat"),
+       ("ikvall", "Resten av kvällen (till 23:59)"),
+       ("timmar:2", "2 timmar"), ("timmar:4", "4 timmar"), ("timmar:24", "Ett dygn"))
+
+
+def val_lista(valt, befintlig_till=None, aktiv=False):
+    poster = list(VAL)
+    if aktiv:
+        nar = befintlig_till or "tills något av systemen säger annat"
+        poster.insert(0, ("behall", f"Behåll nuvarande schema ({nar})"))
+        valt = "behall"
+    return "".join(
+        f'<option value="{v}"{" selected" if v == valt else ""}>{t}</option>'
+        for v, t in poster)
+
+
+def _fly(t):
+    return (t or "").replace("&", "&amp;").replace('"', "&quot;").replace("<", "&lt;")
 
 
 class Panel(BaseHTTPRequestHandler):
@@ -322,6 +432,15 @@ class Panel(BaseHTTPRequestHandler):
             "skarm": s["skarm"], "tid": s["tid"], "banner": banner,
             "nu_namn": s["nu_namn"] or "—", "syns": syns, "nasta": nasta,
             "cache": datetime.now().strftime("%H%M%S"),
+            "rubrik": _fly((s["override"] or {}).get("rubrik", "")),
+            "underrad": _fly((s["override"] or {}).get("underrad", "")),
+            "valt": val_lista((s["override"] or {}).get("hurlange", "tillsvidare"),
+                              (s["override"] or {}).get("till"), s["manuell"]),
+            "valt_upp": val_lista((s["override"] or {}).get("hurlange", "tillsvidare"),
+                                  (s["override"] or {}).get("till"), s["manuell"]),
+            "uppknapp": "Byt ut bilden" if s["manuell"] else "Ladda upp och visa nu",
+            "textknapp": ("Uppdatera texten" if (s["override"] or {}).get("kalla") == "text"
+                          else "Skapa och visa nu"),
         }).encode("utf-8")
 
     def do_POST(self):
@@ -332,6 +451,38 @@ class Panel(BaseHTTPRequestHandler):
                     f.unlink()
                 except OSError:
                     pass
+            return self._omdirigera()
+
+        if vag == "/text":
+            langd = int(self.headers.get("Content-Length", "0"))
+            if langd <= 0 or langd > 20000:
+                return self._svara(400, "text/plain; charset=utf-8", b"fel formular")
+            from urllib.parse import parse_qs
+            f = parse_qs(self.rfile.read(langd).decode("utf-8", "replace"))
+            rubrik = (f.get("rubrik", [""])[0]).strip()
+            underrad = (f.get("underrad", [""])[0]).strip()
+            if not rubrik:
+                return self._svara(400, "text/plain; charset=utf-8", b"tom text")
+            ok, hur = gor_textbild(rubrik, underrad, OVERRIDE_PNG)
+            if not ok:
+                return self._svara(500, "text/plain; charset=utf-8", hur.encode())
+            val = f.get("hurlange", ["tillsvidare"])[0]
+            gammal = las_override() or {}
+            if val == "behall":
+                val = gammal.get("hurlange", "tillsvidare")
+                nytt_till = gammal.get("till")
+            else:
+                nytt_till = berakna_till(val)
+            OVERRIDE_JSON.write_text(json.dumps({
+                "skapad": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                "till": nytt_till,
+                "hurlange": val,
+                "kalla": "text",
+                "rubrik": rubrik,
+                "underrad": underrad,
+                "text": rubrik + (f" — {underrad}" if underrad else ""),
+                "format": hur,
+            }, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
             return self._omdirigera()
 
         if vag != "/upload":
@@ -360,9 +511,16 @@ class Panel(BaseHTTPRequestHandler):
 
         val = (delar.get("hurlange") or b"tillsvidare").decode("utf-8", "replace")
         text = (delar.get("text") or b"").decode("utf-8", "replace").strip()
+        gammal = las_override() or {}
+        if val == "behall":
+            val = gammal.get("hurlange", "tillsvidare")
+            nytt_till = gammal.get("till")
+            text = text or gammal.get("text", "")
+        else:
+            nytt_till = berakna_till(val)
         OVERRIDE_JSON.write_text(json.dumps({
             "skapad": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-            "till": berakna_till(val),
+            "till": nytt_till,
             "hurlange": val,
             "text": text or "manuellt uppladdad bild",
             "format": hur,

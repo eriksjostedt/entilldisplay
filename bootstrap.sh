@@ -40,7 +40,7 @@ export DEBIAN_FRONTEND=noninteractive
 apt_retry() { local i; for i in 1 2 3 4 5; do "$@" && return 0; echo "   apt-försök $i misslyckades — väntar 10s"; sleep 10; done; return 1; }
 apt_retry apt-get update -q
 # imagemagick: panelen gor om HEIC/JPEG fran telefonen till PNG.
-apt_retry apt-get install -y --no-install-recommends mpv curl network-manager imagemagick
+apt_retry apt-get install -y --no-install-recommends mpv curl network-manager imagemagick fonts-dejavu-core
 
 echo "==> ethernet-fallback (kabel = alltid nät, högsta prioritet)"
 if command -v nmcli >/dev/null 2>&1; then
@@ -73,6 +73,12 @@ done
 fetch "bin/valj.py" "$PREFIX/bin/valj.py"
 chmod +x "$PREFIX/bin/valj.py"
 python3 -m py_compile "$PREFIX/bin/valj.py" && rm -rf "$PREFIX/bin/__pycache__"
+
+# Panelen - burkens egen sida. "Hangslen och livrem": den svarar aven nar bade
+# .52 och macen ar nere, vilket ar precis nar man behover den.
+fetch "bin/panel.py" "$PREFIX/bin/panel.py"
+chmod +x "$PREFIX/bin/panel.py"
+python3 -m py_compile "$PREFIX/bin/panel.py" && rm -rf "$PREFIX/bin/__pycache__"
 
 echo "==> systemd-tjänst (skärm=$NAME, media=$MEDIA_BASE, poll=${POLL}s, user=$RUN_USER)"
 fetch "systemd/entilldisplay.service" /etc/systemd/system/entilldisplay.service
