@@ -56,6 +56,22 @@ def kor_valj(*extra):
 TILLGANGAR = Path(__file__).resolve().parent.parent / "assets"
 
 
+def logga(*bitar):
+    """Varje andring av den manuella bilden hamnar i syslog.
+
+    Erik 2026-08-31: "Du maste ha koll pa watchdogs och sant. Sa att det har
+    inte blir till problem." Forsvinner en uppladdad bild ska man kunna se VEM
+    som tog bort den - panelen, ett schemalagt jobb, eller nagot annat. Utan
+    spar blir sadant gissningar, och gissningar rattar inga fel.
+    Las med:  journalctl -t entilldisplay-panel -n 30
+    """
+    try:
+        subprocess.run(["logger", "-t", "entilldisplay-panel", " ".join(str(b) for b in bitar)],
+                       timeout=5)
+    except Exception:
+        pass
+
+
 def faktisk_bild():
     """Vad mpv FAKTISKT visar just nu.
 
@@ -537,6 +553,9 @@ class Panel(BaseHTTPRequestHandler):
     def do_POST(self):
         vag = self.path.split("?")[0]
         if vag == "/avbryt":
+            ov = las_override() or {}
+            logga("AVBRYT via panelen — tog bort:", ov.get("text", "(okänd)"),
+                  "| klient:", self.client_address[0])
             for f in (OVERRIDE_JSON, OVERRIDE_PNG):
                 try:
                     f.unlink()
@@ -574,6 +593,8 @@ class Panel(BaseHTTPRequestHandler):
                 "text": rubrik + (f" — {underrad}" if underrad else ""),
                 "format": hur,
             }, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+            logga("TEXTBILD skapad:", rubrik, "| gäller till:", nytt_till or "tillsvidare",
+                  "| klient:", self.client_address[0])
             return self._omdirigera()
 
         if vag != "/upload":
@@ -616,6 +637,8 @@ class Panel(BaseHTTPRequestHandler):
             "text": text or "manuellt uppladdad bild",
             "format": hur,
         }, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+        logga("BILD uppladdad:", hur, "| gäller till:", nytt_till or "tillsvidare",
+              "| klient:", self.client_address[0])
         return self._omdirigera()
 
     def _omdirigera(self):
