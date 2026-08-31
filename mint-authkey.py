@@ -15,7 +15,13 @@ TOKEN_URL = "https://api.tailscale.com/api/v2/oauth/token"
 BODY = {"capabilities": {"devices": {"create": {
     "reusable": True, "ephemeral": False, "preauthorized": True,
     "tags": ["tag:signage"]}}},
-    "expirySeconds": 86400, "description": "entilldisplay signage firstboot"}
+    # 90 dagar (Tailscales maxvarde for authkeys), inte 24 timmar.
+    # Erik 2026-08-31: "Jag skulle faktiskt gilla tanken pa att ha sd-kort i
+    # fickan." Med 24 timmar var ett forberett kort dott dagen efter - det
+    # bootade, installerade allt fardigt fran git och visade bild, men gick
+    # aldrig att na pa distans. Nyckeln ar taggad (tag:signage), preauthorized
+    # och aterkallningsbar fran tailnet-admin om ett kort skulle komma bort.
+    "expirySeconds": 7776000, "description": "entilldisplay signage firstboot"}
 
 
 def _post(url, data_bytes, headers):

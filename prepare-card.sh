@@ -52,6 +52,10 @@ done
 
 # 3. Skriv kanal + authkey + firstboot till kortet
 printf '%s'   "$KEY" > "$BOOT/entilldisplay-authkey"
+# Sag rakt ut hur lange kortet ar anvandbart. Ett kort med dod nyckel bootar,
+# installerar allt fran git och visar bild - men gar aldrig att na pa distans,
+# och da ar felet svart att forsta pa plats.
+echo "   nyckeln ar giltig till: $(date -v+90d '+%Y-%m-%d' 2>/dev/null || date -d '+90 days' '+%Y-%m-%d')"
 printf '%s\n' "$CH"  > "$BOOT/entilldisplay-channel"
 cp "$HERE/firstboot.sh" "$BOOT/entilldisplay-firstboot.sh"
 cp "$HERE/systemd/entilldisplay-firstboot.service" "$BOOT/entilldisplay-firstboot.service"
