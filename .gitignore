@@ -3,4 +3,8 @@
 state/
 *.png
 *.mp4
+# ...men assets/ ar DESIGNKALLA, inte host-lokal media. Utan undantaget kom
+# bakgrund.png aldrig med i git, och varje nytt kort hade tyst fatt en panel
+# utan husets bakgrund (bootstrap hamtar den fran GitHub). Upptackt 2026-08-31.
+!assets/*.png
 __pycache__/
