@@ -59,6 +59,57 @@ def minuter(t, standard=0):
         return standard
 
 
+def besluta_regler(regler, nu):
+    """Generell väg: en lista regler i PRIORITETSORDNING, första träffen vinner.
+
+    Tre regeltyper räcker för alla skärmar vi har:
+      intervall  — datumintervall, valfritt även klockslag
+                   (temadag, säsong, helgöppet, tillfälligt stängt)
+      dagsfarsk  — innehåll som bara gäller EN dag: kräver att `publicerad`
+                   är dagens datum, plus veckodag och tidsfönster
+                   (Dagens Lunch — utan detta annonseras gårdagens rätt som färsk)
+      fallback   — matchar alltid, ligger sist
+
+    Skärmarna skiljer sig bara i vilka lägen de har: vagg5 kör
+    temadag/sasong/dagens/fallback, dorr kör stangt/helg/standard.
+    """
+    idag = nu.strftime("%Y-%m-%d")
+    nu_min = nu.hour * 60 + nu.minute
+    vd = nu.isoweekday() % 7
+
+    for r in regler:
+        if not isinstance(r, dict):
+            continue
+        lage = r.get("lage")
+        if not lage:
+            continue
+        typ = r.get("typ", "intervall")
+
+        if typ == "fallback":
+            return lage, f"{lage}.png"
+
+        if typ == "intervall":
+            start = r.get("startdate") or r.get("date")
+            slut = r.get("enddate") or r.get("date") or start
+            if not start or not (start <= idag <= slut):
+                continue
+            if minuter(r.get("starttime"), 0) <= nu_min <= minuter(r.get("endtime"), 1439):
+                return lage, f"{lage}.png"
+            continue
+
+        if typ == "dagsfarsk":
+            if r.get("publicerad") != idag:
+                continue
+            if vd not in (r.get("weekdays") or [1, 2, 3, 4, 5]):
+                continue
+            if minuter(r.get("start"), 630) <= nu_min <= minuter(r.get("end"), 840):
+                return lage, f"{lage}.png"
+            continue
+
+    # Ingen regel matchade och ingen fallback fanns — säg ifrån hellre än att gissa.
+    return None, None
+
+
 def besluta(schema, nu):
     idag = nu.strftime("%Y-%m-%d")
     nu_min = nu.hour * 60 + nu.minute
@@ -111,7 +162,18 @@ def main():
     nu_str = os.environ.get("VALJ_NU")
     nu = datetime.strptime(nu_str, "%Y-%m-%d %H:%M") if nu_str else datetime.now()
 
-    lage, bild = besluta(schema, nu)
+    # Nytt format (regellista) om det finns, annars det ursprungliga vagg5-formatet.
+    # Båda vägarna behålls med flit: vagg5 gick i drift på det gamla formatet och
+    # ska inte tvingas byta bara för att dorr kom till.
+    if isinstance(schema.get("regler"), list):
+        lage, bild = besluta_regler(schema["regler"], nu)
+    else:
+        lage, bild = besluta(schema, nu)
+
+    if not bild:
+        print("ingen regel matchade", file=sys.stderr)
+        return 1
+
     fil = LAGER / bild
 
     if not fil.is_file() or fil.stat().st_size == 0:
